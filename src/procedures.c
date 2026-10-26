@@ -195,6 +195,25 @@ void handlePlayerJoin (PlayerData* player) {
   player->flags &= ~0x20;
   player->flagval_16 = 0;
 
+  #ifdef GIVE_TEST_KIT
+    // For testing: give a player with an empty inventory a few useful items
+    uint8_t empty = true;
+    for (int i = 0; i < 41; i ++) if (player->inventory_count[i] != 0) empty = false;
+    if (empty) {
+      givePlayerItem(player, I_stone_hoe, 1);
+      givePlayerItem(player, I_wheat_seeds, 16);
+      givePlayerItem(player, I_carrot, 8);
+      givePlayerItem(player, I_potato, 8);
+      givePlayerItem(player, I_bone_meal, 16);
+      givePlayerItem(player, I_stone_pickaxe, 1);
+      givePlayerItem(player, I_oak_planks, 32);
+      givePlayerItem(player, I_cobblestone, 32);
+      givePlayerItem(player, I_coal, 16);
+      givePlayerItem(player, I_oak_log, 16);
+      givePlayerItem(player, I_iron_ingot, 8);
+    }
+  #endif
+
 }
 
 void disconnectClient (int *client_fd, int cause) {
@@ -2059,8 +2078,11 @@ void tickFarming (uint32_t speed) {
       uint16_t next = block;
       if (hasWaterNearby(x, y, z)) {
         if (moisture != 7) next = BMIN_farmland + OFF_farmland[7];
+      } else if (fast_rand() % 14 != 0) {
+        // Like random ticks in the real game, only about 1 look in 14
+        // (roughly once a minute) can dry the farmland out
       } else if (moisture > 0) {
-        if (fast_rand() % 12 == 0) next = BMIN_farmland + OFF_farmland[moisture - 1];
+        next = BMIN_farmland + OFF_farmland[moisture - 1];
       } else if (getBlockFamily(above) != FAM_CROP) {
         // Dried out with nothing growing on it
         next = B_dirt;

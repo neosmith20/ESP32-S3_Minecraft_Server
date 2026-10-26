@@ -208,6 +208,11 @@
 // get placed directly in the inventory, this is just an animation.
 // Relatively inexpensive, though requires sending a few more packets
 // every time a block is broken.
+// Testing only: players who join with an empty inventory get a starter kit
+// (hoe, seeds, carrots, potatoes, bone meal, pickaxe, planks, cobblestone,
+// coal, logs, iron). Remove the two slashes in front of the line to turn it on.
+// #define GIVE_TEST_KIT
+
 #define ENABLE_PICKUP_ANIMATION
 
 // If defined, players are able to receive damage from nearby cacti.

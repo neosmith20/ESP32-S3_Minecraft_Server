@@ -306,6 +306,17 @@ int main (void) {
   makeBlockChange(X + 1, gy, Z, BMIN_farmland + OFF_farmland[7]);
   for (int i = 0; i < 400; i ++) tickFarming(1);
   CHECK(getBlockAt(X, gy, Z) == B_dirt, "dry empty farmland turns back to dirt");
+  // ...but not right away: hoe a patch and look 3 times (15 seconds)
+  makeBlockChange(X, gy, Z, B_dirt);
+  hold(I_stone_hoe, 1);
+  handlePlayerUseItem(p, X, gy, Z, 1, 128);
+  int early = 0;
+  for (int trial = 0; trial < 200; trial ++) {
+    makeBlockChange(X, gy, Z, BMIN_farmland + OFF_farmland[0]);
+    for (int i = 0; i < 3; i ++) tickFarming(1);
+    if (getBlockAt(X, gy, Z) == B_dirt) early ++;
+  }
+  CHECK(early < 60, "dry farmland rarely reverts within 15 seconds");
   // seeds from grass
   int seeds = 0;
   for (int i = 0; i < 400; i ++) {
