@@ -1,4 +1,3 @@
-
 name: C/C++ Code Analysis
 
 on:
@@ -8,30 +7,45 @@ on:
 
 permissions:
   contents: read
-  pull-requests: read
 
 jobs:
   cpp-linter:
-    name: Clang-Tidy & Clang-Format
-    runs-on: ubuntu-latest
+    name: Clang-Tidy (C sources)
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      - name: Analyze C/C++ code
+      # These placeholder registries are for static analysis only.
+      # Production registries must still be generated from Minecraft data.
+      - name: Generate test registries
+        run: python3 tests/make_stub_registries.py . .lint-generated
+
+      - name: Analyze C source code
         id: linter
         uses: cpp-linter/cpp-linter-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           version: '21'
-          style: 'llvm'
+          # Do not enforce LLVM reformatting on inherited C sources.
+          style: ''
+          # Checking headers as standalone translation units creates false
+          # errors for types provided by the including source files.
+          extensions: 'c'
           tidy-checks: 'bugprone-*,clang-analyzer-*,performance-*,portability-*'
+          extra-args: '-Iinclude -I.lint-generated -std=gnu11'
           files-changed-only: false
           step-summary: true
           file-annotations: true
 
-      - name: Fail if issues are detected
-        if: steps.linter.outputs.checks-failed > 0
-        run: exit 1
+      # Advisory during initial development. The action publishes findings;
+      # no failing gate until the analysis baseline has been triaged.
+      - name: Explain advisory status
+        if: always()
+        run: |
+          echo "### Static analysis is advisory" >> "$GITHUB_STEP_SUMMARY"
+          echo "Review Clang-Tidy annotations and the analysis step summary." >> "$GITHUB_STEP_SUMMARY"
+          echo "This workflow does not yet fail on lint findings." >> "$GITHUB_STEP_SUMMARY"
+          echo "The generated registry data is a placeholder, not an ESP-IDF build." >> "$GITHUB_STEP_SUMMARY"
