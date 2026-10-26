@@ -47,8 +47,21 @@ int initSerializer () {
     }
   #endif
 
-  // Attempt to open existing world file
+  // Attempt to open existing world file. A file of the wrong size is left
+  // over from an interrupted write or an older version, so start fresh.
   FILE *file = fopen(FILE_PATH, "rb");
+  if (file) {
+    fseek(file, 0, SEEK_END);
+    long file_size = ftell(file);
+    fseek(file, 0, SEEK_SET);
+    if (file_size != (long)(sizeof(block_changes) + sizeof(player_data))) {
+      printf("The world file has the wrong size (%ld bytes, expected %u). Starting a new world.\n",
+        file_size, (unsigned)(sizeof(block_changes) + sizeof(player_data)));
+      fclose(file);
+      remove(FILE_PATH);
+      file = NULL;
+    }
+  }
   if (file) {
 
     // Read block changes from the start of the file directly into memory
