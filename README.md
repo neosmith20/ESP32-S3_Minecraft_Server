@@ -97,7 +97,7 @@ Both options require an **ESP32-S3 N16R8** (16 MB flash, 8 MB octal PSRAM), a US
    node --version
    ```
 
-   `java -version` should report **21 or newer**. For Windows, we recommend **Git Bash** (installed with [Git for Windows](https://git-scm.com/downloads/win)) to execute `extract_registries.sh`. **WSL is a separate Linux environment** and will not necessarily see your Windows Java installation: using `bash` from PowerShell may launch `C:\\Windows\\System32\\bash.exe` (WSL) instead of Git Bash.
+   `java -version` should report **21 or newer**. For Windows, we recommend **Git Bash** (installed with [Git for Windows](https://git-scm.com/downloads/win)) to execute `extract_registries.sh`. **WSL is a separate Linux environment** and will not necessarily see your Windows Java installation: using `bash` from PowerShell may launch `C:\Windows\System32\bash.exe` (WSL) instead of Git Bash.
 4. Download the official **Minecraft Java Edition 1.21.8** `server.jar` (used only for extracting registry data). Create a `notchian` folder in the repository root and save the JAR as **`notchian/server.jar`**. It is not shipped in this repository or the firmware ZIP.
 5. From the **repository root** in the VS Code **Git Bash** terminal on Windows (or a normal Bash shell on Linux/macOS), run:
 
@@ -108,13 +108,13 @@ Both options require an **ESP32-S3 N16R8** (16 MB flash, 8 MB octal PSRAM), a US
    **Windows troubleshooting — `Java not found in PATH.` even though `java -version` works in PowerShell?** PowerShell's bare `bash` command may start WSL instead of Git Bash. From the **PowerShell terminal in VS Code**, run Git Bash explicitly using this working Windows command:
 
    ```powershell
-   & "C:\\Program Files\\Git\\bin\\bash.exe" -c 'bash ./extract_registries.sh'
+   & "C:\Program Files\Git\bin\bash.exe" -c 'bash ./extract_registries.sh'
    ```
 
    This uses **Git Bash**, which can access your installed Windows JDK. The path shown is the standard Git for Windows install location; adjust it if Git was installed elsewhere. You can check whether Git Bash sees Java first:
 
    ```powershell
-   & "C:\\Program Files\\Git\\bin\\bash.exe" -lc 'java -version'
+   & "C:\Program Files\Git\bin\bash.exe" -lc 'java -version'
    ```
 
    If instead you intentionally use **WSL**, install Java 21+ inside that Linux distribution and run the script from there. Do not assume Windows PowerShell's Java PATH is shared with WSL.
