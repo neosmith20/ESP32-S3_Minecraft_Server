@@ -84,15 +84,42 @@ Both options require an **ESP32-S3 N16R8** (16 MB flash, 8 MB octal PSRAM), a US
 
 1. On the [repository's main page](https://github.com/neosmith20/ESP32-S3_Minecraft_Server), click **Code → Download ZIP** (or clone the repository). Extract it; the folder should contain `platformio.ini`, `src/`, `include/`, `build_registries.js`, and `extract_registries.sh`. A Release firmware ZIP is **not** a substitute for this source folder.
 2. Install [VS Code](https://code.visualstudio.com/) and its **PlatformIO IDE** extension. Use **File → Open Folder** and select the extracted folder **containing `platformio.ini`**, not its parent. Let PlatformIO initialize the project.
-3. Install **Java 21 or newer**, **Node.js** (or Bun/Deno), and—on Windows—**Git Bash** or WSL. In VS Code, open **Terminal → New Terminal**. Select **Git Bash** as the terminal profile on Windows. Check `java -version` and `node --version` (if using Node).
+3. Install **Java JDK 21 or newer** and **Node.js** (or Bun/Deno) before generating registries. On Windows, install [Eclipse Temurin JDK 21](https://adoptium.net/temurin/releases/?version=21) or run the following in a **PowerShell** terminal:
+
+   ```powershell
+   winget install --id EclipseAdoptium.Temurin.21.JDK --exact
+   ```
+
+   **Close and reopen VS Code** after installing Java so new terminals inherit the updated PATH. Then verify it from **VS Code → Terminal → New Terminal**:
+
+   ```powershell
+   java -version
+   node --version
+   ```
+
+   `java -version` should report **21 or newer**. For Windows, we recommend **Git Bash** (installed with [Git for Windows](https://git-scm.com/downloads/win)) to execute `extract_registries.sh`. **WSL is a separate Linux environment** and will not necessarily see your Windows Java installation: using `bash` from PowerShell may launch `C:\\Windows\\System32\\bash.exe` (WSL) instead of Git Bash.
 4. Download the official **Minecraft Java Edition 1.21.8** `server.jar` (used only for extracting registry data). Create a `notchian` folder in the repository root and save the JAR as **`notchian/server.jar`**. It is not shipped in this repository or the firmware ZIP.
-5. From the **repository root** in the VS Code Git Bash/Linux/macOS terminal, run:
+5. From the **repository root** in the VS Code **Git Bash** terminal on Windows (or a normal Bash shell on Linux/macOS), run:
 
    ```bash
    bash ./extract_registries.sh
    ```
 
-   Wait for it to generate `include/registries.h` and `src/registries.c`. The script runs Minecraft's data generator and `build_registries.js`. **This step is required for building from source, but not for Option A.**
+   **Windows troubleshooting — `Java not found in PATH.` even though `java -version` works in PowerShell?** PowerShell's bare `bash` command may start WSL instead of Git Bash. From the **PowerShell terminal in VS Code**, run Git Bash explicitly using this working Windows command:
+
+   ```powershell
+   & "C:\\Program Files\\Git\\bin\\bash.exe" -c 'bash ./extract_registries.sh'
+   ```
+
+   This uses **Git Bash**, which can access your installed Windows JDK. The path shown is the standard Git for Windows install location; adjust it if Git was installed elsewhere. You can check whether Git Bash sees Java first:
+
+   ```powershell
+   & "C:\\Program Files\\Git\\bin\\bash.exe" -lc 'java -version'
+   ```
+
+   If instead you intentionally use **WSL**, install Java 21+ inside that Linux distribution and run the script from there. Do not assume Windows PowerShell's Java PATH is shared with WSL.
+
+   Wait for the script to generate `include/registries.h` and `src/registries.c`. It runs Minecraft's data generator and `build_registries.js`. **This step is required for building from source, but not for Option A.**
 6. Open `include/globals.h` in VS Code and set your **local 2.4 GHz Wi-Fi credentials** in `WIFI_SSID` and `WIFI_PASS`. **Never publish real credentials** in this public repository or commit that edit. They are currently compiled into the binary.
 7. In VS Code, open the **PlatformIO** sidebar → **PROJECT TASKS → esp32s3-n16r8 → General**. Run **Build**, then **Upload**, then **Monitor** (115200 baud). The equivalent commands in a **PlatformIO Core CLI terminal** are:
 
