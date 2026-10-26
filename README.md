@@ -44,7 +44,7 @@ These describe implemented source changes, **not a claim that all features have 
 
 ### Current gameplay scope
 
-The source and development notes describe terrain and biome generation, caves and ores, mining and tools, crafting and furnaces, health and hunger, chests, day/night, animals and some hostile mobs, and multiplayer support. Treat these as **implemented or intended behaviors pending hardware validation**, not as a promise of full vanilla parity.
+The source and development notes describe terrain and biome generation, caves and ores, mining and tools, crafting and furnaces, farming (hoes, wheat, carrots, potatoes, bread, bone meal), health and hunger, chests, day/night, animals and some hostile mobs, and multiplayer support. Treat these as **implemented or intended behaviors pending hardware validation**, not as a promise of full vanilla parity.
 
 **Not supported as a complete vanilla feature set:** Nether and End dimensions, villages, advanced redstone, enchanting, brewing, and numerous other gameplay systems. This project intentionally prioritizes efficient operation over complete vanilla compatibility.
 
