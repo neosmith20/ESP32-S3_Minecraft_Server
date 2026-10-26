@@ -779,6 +779,15 @@ uint16_t getMiningResult (uint16_t held_item, uint16_t block) {
     return 0;
   }
 
+  // Short grass gives seeds, or itself when cut with shears
+  if (IS_BLOCK(block, short_grass)) {
+    if (held_item == I_shears) return I_short_grass;
+    return (fast_rand() & 7) == 0 ? I_wheat_seeds : 0;
+  }
+
+  // Ripe wheat gives wheat, anything else gives its seed or vegetable
+  if (IS_BLOCK(block, wheat) && getCropAge(block) == 7) return I_wheat;
+
   // Check for the tools needed to get a drop
   if (info->flags & BF_IRON_PICKAXE) {
     if (
@@ -796,6 +805,11 @@ uint16_t getMiningResult (uint16_t held_item, uint16_t block) {
 // How many items mining a block gives
 uint8_t getMiningCount (uint16_t block) {
   int type;
+  // Ripe carrots and potatoes give 1 to 4
+  if ((IS_BLOCK(block, carrots) || IS_BLOCK(block, potatoes)) && getCropAge(block) == 7) {
+    uint32_t r = fast_rand();
+    return 1 + ((r & 3) != 0) + ((r & 12) != 0) + ((r & 48) != 0);
+  }
   // Double slabs are two slabs
   if (getBlockFamily(block) == FAM_SLAB && decodeSlab(block, &type) && type == 2) return 2;
   return 1;
@@ -810,12 +824,12 @@ void bumpToolDurability (PlayerData *player) {
   // the probability weighted based on vanilla durability.
   uint32_t r = fast_rand();
   if (
-    ((held_item == I_wooden_pickaxe || held_item == I_wooden_axe || held_item == I_wooden_shovel) && r < 72796055) ||
-    ((held_item == I_stone_pickaxe || held_item == I_stone_axe || held_item == I_stone_shovel) && r < 32786009) ||
-    ((held_item == I_iron_pickaxe || held_item == I_iron_axe || held_item == I_iron_shovel) && r < 17179869) ||
-    ((held_item == I_golden_pickaxe || held_item == I_golden_axe || held_item == I_golden_shovel) && r < 134217728) ||
-    ((held_item == I_diamond_pickaxe || held_item == I_diamond_axe || held_item == I_diamond_shovel) && r < 2751420) ||
-    ((held_item == I_netherite_pickaxe || held_item == I_netherite_axe || held_item == I_netherite_shovel) && r < 2114705) ||
+    ((held_item == I_wooden_pickaxe || held_item == I_wooden_axe || held_item == I_wooden_shovel || held_item == I_wooden_hoe) && r < 72796055) ||
+    ((held_item == I_stone_pickaxe || held_item == I_stone_axe || held_item == I_stone_shovel || held_item == I_stone_hoe) && r < 32786009) ||
+    ((held_item == I_iron_pickaxe || held_item == I_iron_axe || held_item == I_iron_shovel || held_item == I_iron_hoe) && r < 17179869) ||
+    ((held_item == I_golden_pickaxe || held_item == I_golden_axe || held_item == I_golden_shovel || held_item == I_golden_hoe) && r < 134217728) ||
+    ((held_item == I_diamond_pickaxe || held_item == I_diamond_axe || held_item == I_diamond_shovel || held_item == I_diamond_hoe) && r < 2751420) ||
+    ((held_item == I_netherite_pickaxe || held_item == I_netherite_axe || held_item == I_netherite_shovel || held_item == I_netherite_hoe) && r < 2114705) ||
     (held_item == I_shears && r < 18046081)
   ) {
     player->inventory_items[player->hotbar] = 0;
@@ -890,6 +904,25 @@ uint8_t isReplaceableFluid (uint16_t block, uint8_t level, uint16_t fluid) {
   return isReplaceableBlock(block);
 }
 
+// Whether a water block is close enough to keep farmland wet
+// (within 4 blocks sideways, on the farmland's level or one above)
+static uint8_t hasWaterNearby (short x, uint8_t y, short z) {
+  for (int dx = -4; dx <= 4; dx ++) {
+    for (int dz = -4; dz <= 4; dz ++) {
+      for (int dy = 0; dy <= 1; dy ++) {
+        if (IS_WATER(getBlockAt(x + dx, y + dy, z + dz))) return true;
+      }
+    }
+  }
+  return false;
+}
+
+static uint8_t isHoeItem (uint16_t item) {
+  return
+    item == I_wooden_hoe || item == I_stone_hoe || item == I_iron_hoe ||
+    item == I_golden_hoe || item == I_diamond_hoe || item == I_netherite_hoe;
+}
+
 // Checks whether the given item can be used in a composter
 // Returns the probability (out of 2^32) to return bone meal
 uint32_t isCompostItem (uint16_t item) {
@@ -912,8 +945,16 @@ uint32_t isCompostItem (uint16_t item) {
 
   if ( // Compost chance: 65%
     item == I_apple ||
-    item == I_lily_pad
+    item == I_lily_pad ||
+    item == I_wheat ||
+    item == I_carrot ||
+    item == I_potato
   ) return 398818392;
+
+  if ( // Compost chance: 85%
+    item == I_bread ||
+    item == I_baked_potato
+  ) return 521531742;
 
   return 0;
 }
@@ -1077,6 +1118,10 @@ uint8_t handlePlayerEating (PlayerData *player, uint8_t just_check) {
     case I_cooked_mutton: food = 6; saturation = 4800; break;
     case I_rotten_flesh: food = 4; saturation = 0; break;
     case I_apple: food = 4; saturation = 1200; break;
+    case I_bread: food = 5; saturation = 3000; break;
+    case I_carrot: food = 3; saturation = 1800; break;
+    case I_potato: food = 1; saturation = 300; break;
+    case I_baked_potato: food = 5; saturation = 3000; break;
     default: break;
   }
 
@@ -1411,6 +1456,11 @@ void handlePlayerAction (PlayerData *player, int action, short x, short y, short
     givePlayerItem(player, item, item_count);
   }
 
+  // Ripe wheat also gives 1 to 3 seeds
+  if (IS_BLOCK(block, wheat) && getCropAge(block) == 7) {
+    givePlayerItem(player, I_wheat_seeds, 1 + (fast_rand() % 3));
+  }
+
   // Update nearby fluids
   uint16_t block_above = getBlockAt(x, y + 1, z);
   #ifdef DO_FLUID_FLOW
@@ -1609,8 +1659,26 @@ void handlePlayerUseItem (PlayerData *player, short x, short y, short z, uint8_t
         // Bone meal has a 25% chance of growing a tree from a sapling
         if ((fast_rand() & 3) == 0) placeTreeStructure(x, y, z);
       }
+    } else if (getCropAge(target) >= 0 && getCropAge(target) < 7) {
+      // Bone meal advances crops by 2 to 5 growth stages
+      if ((*count -= 1) == 0) *item = 0;
+      sc_setContainerSlot(player->client_fd, 0, serverSlotToClientSlot(0, player->hotbar), *count, *item);
+      makeBlockChange(x, y, z, getCropState(target, getCropAge(target) + 2 + (fast_rand() & 3)));
     }
-  } else if (handlePlayerEating(player, true)) {
+  } else if (isHoeItem(*item)) {
+    // Hoes turn dirt and grass into farmland, if nothing is on top of it
+    if (face == 255 || face == 0) return;
+    if (
+      (IS_BLOCK(target, dirt) || IS_BLOCK(target, grass_block)) &&
+      getBlockAt(x, y + 1, z) == B_air
+    ) {
+      uint8_t wet = hasWaterNearby(x, y, z);
+      if (!makeBlockChange(x, y, z, BMIN_farmland + OFF_farmland[wet ? 7 : 0])) {
+        bumpToolDurability(player);
+      }
+    }
+    return;
+  } else if (!(face == 1 && getBlockFamily(target) == FAM_FARMLAND) && handlePlayerEating(player, true)) {
     // Reset eating timer and set eating flag
     player->flagval_16 = 0;
     player->flags |= 0x10;
@@ -1682,6 +1750,7 @@ void handlePlayerUseItem (PlayerData *player, short x, short y, short z, uint8_t
       (py == player->y || py == player->y + 1 || (is_door && py + 1 == player->y))
     ) &&
     (!isColumnBlock(state) || getBlockAt(px, py - 1, pz) != B_air) &&
+    (info->family != FAM_CROP || (face == 1 && getBlockFamily(target) == FAM_FARMLAND)) &&
     (info->family != FAM_LANTERN || getBlockAt(px, py + (face == 0 ? 1 : -1), pz) != B_air)
   ) {
     // Apply server-side block change
@@ -1693,6 +1762,11 @@ void handlePlayerUseItem (PlayerData *player, short x, short y, short z, uint8_t
         makeBlockChange(px, py, pz, B_air);
         return;
       }
+    }
+    // Planting a carrot or potato must not also start eating it
+    if (info->family == FAM_CROP) {
+      player->flags &= ~0x10;
+      player->flagval_16 = 0;
     }
     // Decrease item amount in selected slot
     *count -= 1;
@@ -1922,7 +1996,12 @@ void hurtEntity (int entity_id, int attacker_id, uint8_t damage_type, uint8_t da
           case 28: givePlayerItem(player, I_beef, 1 + (fast_rand() % 3)); break;
           case 95: givePlayerItem(player, I_porkchop, 1 + (fast_rand() % 3)); break;
           case 106: givePlayerItem(player, I_mutton, 1 + (fast_rand() & 1)); break;
-          case 145: givePlayerItem(player, I_rotten_flesh, (fast_rand() % 3)); break;
+          case 145:
+            givePlayerItem(player, I_rotten_flesh, (fast_rand() % 3));
+            // Rare vegetable drops (there are no villages to find them in)
+            if (fast_rand() < 107374182) givePlayerItem(player, I_carrot, 1);
+            else if (fast_rand() < 107374182) givePlayerItem(player, I_potato, 1);
+            break;
           default: break;
         }
       }
@@ -1947,6 +2026,76 @@ void hurtEntity (int entity_id, int attacker_id, uint8_t damage_type, uint8_t da
 
 }
 
+// Grows crops and keeps farmland wet or dries it out. Called every few
+// seconds. Only a limited number of plants is looked at per call, so big farms
+// grow a little slower rather than stalling the server. `speed` multiplies
+// the growth chances (1 for normal play).
+#define FARM_BUDGET 48
+void tickFarming (uint32_t speed) {
+
+  struct { short x; uint8_t y; short z; uint16_t state; } pending[FARM_BUDGET];
+  int n_pending = 0, looked_at = 0;
+
+  static int scan_pos = 0;
+  if (scan_pos >= block_changes_count) scan_pos = 0;
+
+  int i = scan_pos;
+  for (; i < block_changes_count && looked_at < FARM_BUDGET; i ++) {
+    uint16_t block = block_changes[i].block;
+    if (block == BLOCK_NONE) continue;
+    #ifdef ALLOW_CHESTS
+      if (IS_BLOCK(block, chest)) { i += 14; continue; }
+    #endif
+    uint8_t family = getBlockFamily(block);
+    if (family != FAM_CROP && family != FAM_FARMLAND) continue;
+    looked_at ++;
+
+    short x = block_changes[i].x, z = block_changes[i].z;
+    uint8_t y = block_changes[i].y;
+
+    if (family == FAM_FARMLAND) {
+      int moisture = getFarmlandMoisture(block);
+      uint16_t above = getBlockAt(x, y + 1, z);
+      uint16_t next = block;
+      if (hasWaterNearby(x, y, z)) {
+        if (moisture != 7) next = BMIN_farmland + OFF_farmland[7];
+      } else if (moisture > 0) {
+        if (fast_rand() % 12 == 0) next = BMIN_farmland + OFF_farmland[moisture - 1];
+      } else if (getBlockFamily(above) != FAM_CROP) {
+        // Dried out with nothing growing on it
+        next = B_dirt;
+      }
+      if (next != block && n_pending < FARM_BUDGET) {
+        pending[n_pending].x = x; pending[n_pending].y = y; pending[n_pending].z = z;
+        pending[n_pending].state = next;
+        n_pending ++;
+      }
+    } else {
+      int age = getCropAge(block);
+      if (age >= 7) continue;
+      uint16_t soil = getBlockAt(x, y - 1, z);
+      if (getBlockFamily(soil) != FAM_FARMLAND) continue;
+      // Wet farmland: a stage about every 8 minutes. Dry farmland: half as fast.
+      uint32_t chance = getFarmlandMoisture(soil) > 0 ? 44739243 : 22369621;
+      uint64_t scaled = (uint64_t)chance * speed;
+      if (fast_rand() < (scaled > 0xFFFFFFFFu ? 0xFFFFFFFFu : (uint32_t)scaled)) {
+        if (n_pending < FARM_BUDGET) {
+          pending[n_pending].x = x; pending[n_pending].y = y; pending[n_pending].z = z;
+          pending[n_pending].state = getCropState(block, age + 1);
+          n_pending ++;
+        }
+      }
+    }
+  }
+  scan_pos = i;
+
+  // Apply the changes after scanning, as they can reshuffle block_changes
+  for (int j = 0; j < n_pending; j ++) {
+    makeBlockChange(pending[j].x, pending[j].y, pending[j].z, pending[j].state);
+  }
+
+}
+
 // Simulates events scheduled for regular intervals
 // Takes the time since the last tick in microseconds as the only arguemnt
 void handleServerTick (int64_t time_since_last_tick) {
@@ -1960,6 +2109,9 @@ void handleServerTick (int64_t time_since_last_tick) {
   world_time = (world_time + time_since_last_tick / 50000) % 24000;
   // Increment server tick counter
   server_ticks ++;
+
+  // Grow crops every 5 seconds
+  if (server_ticks % (uint32_t)(5 * TICKS_PER_SECOND) == 0) tickFarming(1);
 
   // Update player events
   for (int i = 0; i < MAX_PLAYERS; i ++) {

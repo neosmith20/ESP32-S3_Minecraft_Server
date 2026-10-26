@@ -74,3 +74,23 @@ int decodeLog (uint16_t state, int *axis) {
   }
   return 0;
 }
+
+int getCropAge (uint16_t state) {
+  const BlockInfo *info = getBlockInfo(state);
+  if (info == NULL || info->family != FAM_CROP) return -1;
+  return state - info->min;
+}
+
+uint16_t getCropState (uint16_t state, int age) {
+  const BlockInfo *info = getBlockInfo(state);
+  if (info == NULL || info->family != FAM_CROP) return state;
+  if (age < 0) age = 0;
+  if (age > 7) age = 7;
+  return info->min + OFF_crop[age];
+}
+
+int getFarmlandMoisture (uint16_t state) {
+  const BlockInfo *info = getBlockInfo(state);
+  if (info == NULL || info->family != FAM_FARMLAND) return -1;
+  return state - info->min;
+}

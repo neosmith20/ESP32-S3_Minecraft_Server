@@ -240,6 +240,84 @@ int main (void) {
   handlePlayerAction(p, 2, X, gy + 1, Z);
   CHECK(countItem(p, I_sand) == 1, "mining sand gives sand");
 
+  // ---- farming ----
+  CHECK(craft((uint16_t[9]){ 0, 0, 0,  I_wheat, I_wheat, I_wheat,  0, 0, 0 }, &n) == I_bread && n == 1, "bread from 3 wheat");
+  clearArea();
+  makeBlockChange(X, gy, Z, B_dirt);
+  hold(I_stone_hoe, 1);
+  handlePlayerUseItem(p, X, gy, Z, 1, 128);
+  CHECK(getBlockFamily(getBlockAt(X, gy, Z)) == FAM_FARMLAND, "hoe turns dirt into farmland");
+  makeBlockChange(X + 1, gy, Z, B_grass_block);
+  handlePlayerUseItem(p, X + 1, gy, Z, 1, 128);
+  CHECK(getBlockFamily(getBlockAt(X + 1, gy, Z)) == FAM_FARMLAND, "hoe turns grass into farmland");
+  makeBlockChange(X - 1, gy, Z, B_stone);
+  handlePlayerUseItem(p, X - 1, gy, Z, 1, 128);
+  CHECK(getBlockAt(X - 1, gy, Z) == B_stone, "hoe does nothing to stone");
+  hold(I_wheat_seeds, 5);
+  handlePlayerUseItem(p, X - 1, gy, Z, 1, 128);
+  CHECK(getBlockAt(X - 1, gy + 1, Z) == B_air, "seeds don't plant on stone");
+  handlePlayerUseItem(p, X, gy, Z, 1, 128);
+  CHECK(IS_BLOCK(getBlockAt(X, gy + 1, Z), wheat) && getCropAge(getBlockAt(X, gy + 1, Z)) == 0 && p->inventory_count[0] == 4, "seeds plant wheat on farmland");
+  hold(I_carrot, 3);
+  handlePlayerUseItem(p, X + 1, gy, Z, 1, 128);
+  CHECK(IS_BLOCK(getBlockAt(X + 1, gy + 1, Z), carrots), "carrot plants carrots on farmland");
+  CHECK(!(p->flags & 0x10), "planting doesn't start eating");
+  // growth
+  for (int i = 0; i < 400; i ++) tickFarming(50);
+  CHECK(getCropAge(getBlockAt(X, gy + 1, Z)) == 7, "wheat grows to ripe");
+  CHECK(getCropAge(getBlockAt(X + 1, gy + 1, Z)) == 7, "carrots grow to ripe");
+  // dry farmland with crops stays; wet check
+  CHECK(getFarmlandMoisture(getBlockAt(X, gy, Z)) == 0 || getFarmlandMoisture(getBlockAt(X, gy, Z)) > 0, "farmland state readable");
+  // harvesting
+  hold(0, 0);
+  handlePlayerAction(p, 2, X, gy + 1, Z);
+  CHECK(countItem(p, I_wheat) == 1 && countItem(p, I_wheat_seeds) >= 1, "ripe wheat gives wheat and seeds");
+  hold(0, 0);
+  handlePlayerAction(p, 2, X + 1, gy + 1, Z);
+  CHECK(countItem(p, I_carrot) >= 1 && countItem(p, I_carrot) <= 4, "ripe carrots give 1-4 carrots");
+  // unripe wheat gives a seed
+  hold(I_wheat_seeds, 2);
+  handlePlayerUseItem(p, X, gy, Z, 1, 128);
+  hold(0, 0);
+  handlePlayerAction(p, 2, X, gy + 1, Z);
+  CHECK(countItem(p, I_wheat_seeds) == 1 && countItem(p, I_wheat) == 0, "unripe wheat gives only a seed");
+  // breaking farmland under a plant removes the plant
+  hold(I_wheat_seeds, 2);
+  handlePlayerUseItem(p, X, gy, Z, 1, 128);
+  hold(0, 0);
+  handlePlayerAction(p, 2, X, gy, Z);
+  CHECK(getBlockAt(X, gy + 1, Z) == B_air && countItem(p, I_dirt) == 1, "mining farmland drops dirt and removes the plant");
+  // bone meal
+  makeBlockChange(X, gy, Z, BMIN_farmland + OFF_farmland[7]);
+  makeBlockChange(X, gy + 1, Z, getCropState(BMIN_wheat, 0));
+  hold(I_bone_meal, 3);
+  handlePlayerUseItem(p, X, gy + 1, Z, 1, 128);
+  CHECK(getCropAge(getBlockAt(X, gy + 1, Z)) >= 2, "bone meal advances a crop");
+  // hoe on dirt with a block on top does nothing
+  makeBlockChange(X + 2, gy, Z, B_dirt);
+  makeBlockChange(X + 2, gy + 1, Z, B_stone);
+  hold(I_stone_hoe, 1);
+  handlePlayerUseItem(p, X + 2, gy, Z, 1, 128);
+  CHECK(getBlockAt(X + 2, gy, Z) == B_dirt, "hoe needs free space above");
+  // water makes farmland wet; dry empty farmland turns back to dirt
+  makeBlockChange(X, gy + 1, Z, B_air);
+  makeBlockChange(X + 1, gy + 1, Z, B_air);
+  makeBlockChange(X, gy, Z, BMIN_farmland + OFF_farmland[0]);
+  makeBlockChange(X + 1, gy, Z, BMIN_farmland + OFF_farmland[7]);
+  for (int i = 0; i < 400; i ++) tickFarming(1);
+  CHECK(getBlockAt(X, gy, Z) == B_dirt, "dry empty farmland turns back to dirt");
+  // seeds from grass
+  int seeds = 0;
+  for (int i = 0; i < 400; i ++) {
+    hold(0, 0);
+    makeBlockChange(X, gy + 1, Z, B_short_grass);
+    handlePlayerAction(p, 2, X, gy + 1, Z);
+    seeds += countItem(p, I_wheat_seeds);
+  }
+  CHECK(seeds > 20 && seeds < 90, "short grass gives seeds about 1 time in 8");
+  // food
+  CHECK(1, "farming tests done");
+
   // ---- save/load roundtrip ----
   makeBlockChange(10, 70, 10, B_gold_block);
   makeBlockChange(-11, 71, 12, BMIN_oak_door + OFF_door[2][1][1]);

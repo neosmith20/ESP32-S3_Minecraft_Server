@@ -146,6 +146,7 @@ void getSmeltingOutput (PlayerData *player) {
   else registerSmeltingRecipe(I_beef, I_cooked_beef);
   else registerSmeltingRecipe(I_porkchop, I_cooked_porkchop);
   else registerSmeltingRecipe(I_mutton, I_cooked_mutton);
+  else registerSmeltingRecipe(I_potato, I_baked_potato);
   else return;
 
   *output_count += exchange;

@@ -55,4 +55,11 @@ int decodeStairs (uint16_t state, int *facing, int *top);
 int decodeSlab (uint16_t state, int *type);
 int decodeLog (uint16_t state, int *axis);
 
+// Crops: growth stage 0 to 7 (7 is ripe). Returns -1 if the state isn't a crop.
+int getCropAge (uint16_t state);
+// The state of the same crop at another growth stage
+uint16_t getCropState (uint16_t state, int age);
+// Farmland: 7 is wet, 0 is dry. Returns -1 if the state isn't farmland.
+int getFarmlandMoisture (uint16_t state);
+
 #endif

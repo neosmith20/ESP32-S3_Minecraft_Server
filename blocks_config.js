@@ -18,6 +18,8 @@ const plainBlocks = [
   "dead_bush", "cactus", "lily_pad", "moss_carpet", "short_grass",
   "coal_ore", "iron_ore", "copper_ore", "gold_ore", "redstone_ore", "diamond_ore",
   "coal_block", "iron_block", "gold_block", "diamond_block", "redstone_block", "copper_block",
+  // Farming
+  "farmland", "wheat", "carrots", "potatoes",
   // Utility
   "crafting_table", "furnace", "chest", "composter", "torch", "wall_torch", "lantern", "ladder",
   // Glass
@@ -115,6 +117,18 @@ const families = {
     dims: [["hanging", BOOL]],
     fixed: { waterlogged: "false" }
   },
+  // Crops: growth stage 0 (just planted) to 7 (ripe)
+  CROP: {
+    sample: "wheat", table: "crop",
+    dims: [["age", ["0", "1", "2", "3", "4", "5", "6", "7"]]],
+    fixed: {}
+  },
+  // Farmland: 7 = wet, 0 = dry
+  FARMLAND: {
+    sample: "farmland", table: "farmland",
+    dims: [["moisture", ["0", "1", "2", "3", "4", "5", "6", "7"]]],
+    fixed: {}
+  },
   // Fences and panes: indexed [north][east][south][west], 1 = connected
   FENCE: {
     sample: "oak_fence", table: "fence",
@@ -155,6 +169,8 @@ function familyOf (name) {
   if (name === "chest") return "CHEST";
   if (name === "furnace") return "FURNACE";
   if (name === "lantern") return "LANTERN";
+  if (name === "wheat" || name === "carrots" || name === "potatoes") return "CROP";
+  if (name === "farmland") return "FARMLAND";
   return "NONE";
 }
 
@@ -177,22 +193,35 @@ const blockToItemOverrides = {
   "glass": null,
   "glass_pane": null,
   "ice": null,
-  "oak_door": "oak_door"
+  "oak_door": "oak_door",
+  // Crops drop their seed or vegetable (ripe wheat also drops wheat, see the C code)
+  "wheat": "wheat_seeds",
+  "carrots": "carrot",
+  "potatoes": "potato",
+  "farmland": "dirt"
+};
+
+// Items that place a block even though the block's own item differs
+const itemPlacements = {
+  "wheat_seeds": "wheat",
+  "carrot": "carrots",
+  "potato": "potatoes"
 };
 
 // Blocks you can walk through (fluids and open doors are handled in code)
 const passableBlocks = new Set([
   "air", "snow", "moss_carpet", "short_grass", "dead_bush", "torch", "wall_torch",
-  "ladder", "oak_button", "stone_button", "oak_pressure_plate", "stone_pressure_plate"
+  "ladder", "oak_button", "stone_button", "oak_pressure_plate", "stone_pressure_plate",
+  "wheat", "carrots", "potatoes"
 ]);
 // Blocks that placed blocks may replace (fluids are handled in code)
 const replaceableBlocks = new Set(["air", "short_grass", "snow"]);
 // Blocks that break instantly
-const instantBlocks = new Set(["dead_bush", "short_grass", "torch", "wall_torch", "lily_pad", "oak_sapling"]);
+const instantBlocks = new Set(["dead_bush", "short_grass", "torch", "wall_torch", "lily_pad", "oak_sapling", "wheat", "carrots", "potatoes"]);
 // Blocks that need something solid underneath
 const columnBlocks = new Set([
   "snow", "moss_carpet", "cactus", "short_grass", "dead_bush", "sand", "torch",
-  "oak_sapling", "oak_pressure_plate", "stone_pressure_plate"
+  "oak_sapling", "oak_pressure_plate", "stone_pressure_plate", "wheat", "carrots", "potatoes"
 ]);
 // Blocks that the client creates special rendering for only when told about
 // them in a block update (light emitters and block entities)
@@ -259,11 +288,11 @@ function toolTagOf (name) {
   if (f & (FLAGS.PICKAXE | FLAGS.IRON_PICKAXE)) return "mineable/pickaxe";
   if (name.startsWith("oak_") && !name.endsWith("_leaves") && !name.endsWith("_sapling")) return "mineable/axe";
   if (name === "crafting_table" || name === "chest" || name === "ladder") return "mineable/axe";
-  if (["grass_block", "dirt", "sand", "snow", "snow_block", "mud"].includes(name)) return "mineable/shovel";
+  if (["grass_block", "dirt", "sand", "snow", "snow_block", "mud", "farmland"].includes(name)) return "mineable/shovel";
   return null;
 }
 
 module.exports = {
   supportedBlocks, families, familyOf, flagsOf, FLAGS,
-  blockToItemOverrides, toolTagOf, DIRS, BOOL
+  blockToItemOverrides, itemPlacements, toolTagOf, DIRS, BOOL
 };

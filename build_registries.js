@@ -3,7 +3,7 @@ const path = require("path");
 
 const {
   supportedBlocks, families, familyOf, flagsOf, FLAGS,
-  blockToItemOverrides, toolTagOf
+  blockToItemOverrides, itemPlacements, toolTagOf
 } = require("./blocks_config.js");
 const { recipes } = require("./recipes_config.js");
 
@@ -19,7 +19,7 @@ const biomes = [
 // Family codes shared with the C code (see include/registries.h)
 const familyNames = [
   "NONE", "FLUID", "DOOR", "TRAPDOOR", "GATE", "STAIRS", "SLAB", "LOG", "LADDER",
-  "WALL_TORCH", "TORCH", "FENCE", "PANE", "WALL", "CHEST", "FURNACE", "LANTERN"
+  "WALL_TORCH", "TORCH", "FENCE", "PANE", "WALL", "CHEST", "FURNACE", "LANTERN", "CROP", "FARMLAND"
 ];
 
 // Special ingredient groups used by recipes (item IDs are far below these)
@@ -336,8 +336,14 @@ async function convert () {
   // Item-to-block mapping: placing an item places the block's default state
   const itemToBlock = new Map();
   for (const info of infos) {
-    if (!info.ownItem || info.family === "FLUID" || info.family === "WALL_TORCH" || info.name === "air") continue;
+    if (!info.ownItem || info.family === "FLUID" || info.family === "WALL_TORCH" || info.family === "CROP" || info.name === "air") continue;
     if (!itemToBlock.has(info.ownItem)) itemToBlock.set(info.ownItem, info.def);
+  }
+
+  for (const [itemName, blockName] of Object.entries(itemPlacements)) {
+    const info = infos.find(i => i.name === blockName);
+    if (!info || !items[itemName]) throw new Error(`Bad item placement ${itemName} -> ${blockName}`);
+    itemToBlock.set(items[itemName], info.def);
   }
 
   const grass = infos.find(i => i.name === "grass_block");

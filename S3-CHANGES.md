@@ -1,5 +1,11 @@
 # What changed, version by version
 
+## Version 2.1
+
+* Farming: farmland, wheat, carrots, potatoes, hoes, bread, baked potatoes, bone meal on crops.
+* Fixed: grass blocks dropped nothing when mined by hand.
+* The server now recreates a world file that has the wrong size instead of stopping.
+
 ## Version 2
 
 Version 2 is a rewrite of how the server stores blocks, so it can behave much
