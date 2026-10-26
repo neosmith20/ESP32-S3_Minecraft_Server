@@ -1,0 +1,5 @@
+# Adds the LittleFS file system component, used to save the world to flash.
+# If you would rather not save the world, delete this file (the server then
+# builds without saving, automatically).
+dependencies:
+  joltwallet/littlefs: "*"

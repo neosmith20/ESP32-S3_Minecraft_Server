@@ -1,0 +1,38 @@
+# Build settings for an ESP32-S3 N16R8 (16 MB flash, 8 MB octal PSRAM).
+# PlatformIO reads this file the first time a project is configured.
+# If you change it later, delete the generated "sdkconfig.esp32s3-n16r8"
+# file in the project folder so the new values are picked up.
+
+# --- CPU and compiler -------------------------------------------------------
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
+CONFIG_COMPILER_OPTIMIZATION_PERF=y
+
+# --- Flash (16 MB, quad mode, 80 MHz) ---------------------------------------
+CONFIG_ESPTOOLPY_FLASHMODE_QIO=y
+CONFIG_ESPTOOLPY_FLASHFREQ_80M=y
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+CONFIG_PARTITION_TABLE_FILENAME="partitions.csv"
+
+# --- PSRAM (8 MB, octal, 80 MHz) --------------------------------------------
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_OCT=y
+CONFIG_SPIRAM_SPEED_80M=y
+# Lets the big arrays marked EXT_RAM_BSS_ATTR (block changes and their lookup
+# index, see include/globals.h) live in PSRAM. This is what allows the larger
+# 60000-entry world. The terrain cache also uses PSRAM.
+CONFIG_SPIRAM_ALLOW_BSS_SEG_EXTERNAL_MEMORY=y
+
+# --- Tasks and timing ---------------------------------------------------------
+# 1 ms ticks instead of 10 ms. The server sleeps one tick every second to feed
+# the watchdog, so this makes that pause ten times shorter.
+CONFIG_FREERTOS_HZ=1000
+# Keep the network stack on core 0 (next to WiFi). The server itself is pinned
+# to core 1 in src/main.c.
+CONFIG_LWIP_TCPIP_TASK_AFFINITY_CPU0=y
+
+# --- Network buffers ------------------------------------------------------------
+# Larger TCP send/receive windows help when a chunk (about 75 KB) is sent.
+CONFIG_LWIP_TCP_SND_BUF_DEFAULT=11520
+CONFIG_LWIP_TCP_WND_DEFAULT=11520
