@@ -45,27 +45,9 @@
 /**
  * Routes an incoming packet to its packet handler or procedure.
  *
- * Full disclosure, I think this whole thing is a bit of a mess.
- * The packet handlers started out as having proper error checks and
- * handling, but that turned out to be very tedious and space/time
- * consuming, and didn't really help with resolving errors. Not to mention
- * that all those checks likely compound into a non-negligible performance
- * hit on embedded systems.
- *
- * I think the way forward would be to gut the return values of the packet
- * handlers, as most of them only ever return 0, and others aren't checked
- * here. The length discrepancy checks at the bottom already do a good job
- * at preventing this from derailing completely in case of a bad packet,
- * and I think leaning into those is fine.
- *
- * In other words, I think the sc_/cs_ handlers should be of type `void`,
- * and should simply return early when there's a failure that prevents the
- * server from handling a packet. Any data that's left unhandled/unread
- * will be caught by the length discrepancy checks. That's more or less
- * how it already works, just not explicitly.
- *
- * Why have I not done this yet? Well, I'm close to uploading the video,
- * and I don't want to risk refactoring anything this close to release.
+ * Packet handlers do not do full error handling, to save space and time on
+ * an embedded device. Instead, the length checks at the bottom of this
+ * function catch any data that a handler left unread or read too much of.
  */
 void handlePacket (int client_fd, int length, int packet_id, int state) {
 
@@ -805,7 +787,7 @@ int main () {
 
 #ifdef ESP_PLATFORM
 
-void bareiron_main (void *pvParameters) {
+void mcserver_main (void *pvParameters) {
   main();
   vTaskDelete(NULL);
 }
@@ -825,9 +807,9 @@ static void wifi_event_handler (void *arg, esp_event_base_t event_base, int32_t 
     // The WiFi driver and network stack are busiest on core 0 by default,
     // so this keeps the two from stealing time from each other.
     #if CONFIG_FREERTOS_UNICORE
-      xTaskCreate(bareiron_main, "bareiron", SERVER_TASK_STACK_SIZE, NULL, 5, NULL);
+      xTaskCreate(mcserver_main, "mcserver", SERVER_TASK_STACK_SIZE, NULL, 5, NULL);
     #else
-      xTaskCreatePinnedToCore(bareiron_main, "bareiron", SERVER_TASK_STACK_SIZE, NULL, 5, NULL, 1);
+      xTaskCreatePinnedToCore(mcserver_main, "mcserver", SERVER_TASK_STACK_SIZE, NULL, 5, NULL, 1);
     #endif
   }
 }

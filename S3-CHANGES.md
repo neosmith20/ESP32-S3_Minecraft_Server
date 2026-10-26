@@ -1,4 +1,6 @@
-# bareiron for the ESP32-S3 N16R8, version 2
+# What changed, version by version
+
+## Version 2
 
 Version 2 is a rewrite of how the server stores blocks, so it can behave much
 more like a real Minecraft server. **It starts a new world** (the old world
@@ -30,16 +32,16 @@ file is deleted from the board's flash on first start).
 
 ## Setup differences from version 1
 
-Use a **new folder** (for example `I:\ESP32\bareiron-s3-v2`), so your version 1
+Use a **new folder** (for example `I:\ESP32\esp32s3-mc-v2`), so your version 1
 project stays as it is. Steps 1 to 3 below are otherwise the same. After you
 have the `notchian` folder, `./extract_registries.sh` (or `node build_registries.js`)
 creates `include/registries.h` and `src/registries.c`.
 
 ---
 
-# bareiron for the ESP32-S3 N16R8: what changed and how to use it
+# Version 1 notes (earlier changes, still true for the performance work)
 
-This is a modified copy of p2r3/bareiron (GPL-3.0, same license) tuned for a
+This project started from an open-source minimal Minecraft server (see the credits in README.md) and is tuned for a
 board with 16 MB flash and 8 MB PSRAM. Everything below is relative to the
 folder you extract this project into (called `<project>` here).
 
