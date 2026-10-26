@@ -107,23 +107,54 @@ def package(build_dir: Path, output: Path, version: str, sha: str, minecraft: st
 **Experimental development firmware. Target: ESP32-S3 N16R8 ONLY (16 MB flash, 8 MB PSRAM).**
 Minecraft Java {minecraft}; source commit {sha}.
 
-## Flashing (Windows, Linux or macOS)
+## Flashing this prebuilt release using Visual Studio Code
 
-1. Unzip this archive. Connect your ESP32-S3 N16R8 using a USB DATA cable.
-2. Install Python 3 and a supported esptool 5.x version:
+This ZIP is ready-to-flash firmware, NOT a PlatformIO source project.
+It does not contain platformio.ini, so do NOT use PlatformIO's Build/Upload
+buttons with this folder. You also do NOT need extract_registries.sh, Node.js,
+Java, or the Minecraft server JAR to flash it.
+
+1. Unzip the release and open the extracted folder using
+   **Visual Studio Code > File > Open Folder**.
+2. Connect an ESP32-S3 N16R8 with a USB DATA cable.
+3. Open **Terminal > New Terminal** and install Python 3 and esptool 5.x:
+
    python -m pip install "esptool>=5,<6"
-3. Find your device serial port (Windows example: COM5; Linux: /dev/ttyUSB0).
-4. In this extracted folder, run:
+
+   On Windows, use "py -m pip" and "py -m esptool" if "python" is not found.
+4. Find the serial port. Windows: Device Manager, e.g. COM5.
+   Linux: e.g. /dev/ttyUSB0. macOS: e.g. /dev/cu.usbmodem...
+5. From the extracted folder, run this exact release-specific command:
 
    python -m esptool --chip esp32s3 --port COM5 write-flash {args}
 
-Replace COM5 with your board's actual port. The offsets above were obtained
-from this exact build's ESP-IDF flash metadata, not guessed.
+   Replace COM5 with your port; use "py -m esptool" on Windows if required.
+   The addresses above are from THIS firmware build's ESP-IDF metadata.
+   They are not generic values: do not guess offsets or flash firmware.bin
+   alone to a blank board.
+6. To view logs, use a VS Code terminal:
+   python -m serial.tools.miniterm COM5 115200
 
-DO NOT erase flash unnecessarily; changing the partition table or firmware can
-still affect existing saved worlds. Back up world data before flashing.
-Flash mode/size/frequency defaults preserve the values embedded in the images.
-No hardware or runtime operation is guaranteed by successful CI compilation.
+   Replace COM5 with your port, and install "pyserial" if needed.
+   Close serial monitors before flashing again.
+
+## Current Wi-Fi limitation — important
+
+The publicly built firmware currently embeds WIFI_SSID="your-ssid" and
+WIFI_PASS="your-password" from include/globals.h. You CAN flash this ZIP,
+but it normally CANNOT join your home Wi-Fi or host a reachable Minecraft
+server using those placeholders. Until Wi-Fi provisioning is added, build
+from the main-branch SOURCE ZIP using VS Code + PlatformIO, set your local
+Wi-Fi credentials, generate registry files, and then upload that firmware.
+The full source-workflow instructions are in the project README.
+
+The server runs on the ESP32-S3, not within VS Code. It is experimental:
+hardware operation is not validated by CI. Keep it on a trusted local LAN
+because the Minecraft server currently runs without online authentication.
+
+Do not erase flash unnecessarily; changes in partition layout or world data
+format can affect previously saved worlds. Back up world data before upgrading.
+Flash mode/frequency settings are taken from the compiled images.
 
 ## Checking the archive
 The outer .zip.sha256 published next to this ZIP checks the entire download.

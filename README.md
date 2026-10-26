@@ -5,7 +5,7 @@
 Run a lightweight Minecraft server on an ESP32-S3 **N16R8** board (16 MB flash, 8 MB PSRAM). This project adapts [p2r3/bareiron](https://github.com/p2r3/bareiron) for ESP-IDF / PlatformIO and extends its world, block, and crafting systems.
 
 > [!IMPORTANT]
-> **Active development — hardware operation is not yet verified in the checked-in documentation.** PC-based logic tests have been performed, but the documented ESP32-S3 firmware paths have not yet been confirmed by a successful physical-device build and test. See [S3-CHANGES.md](S3-CHANGES.md) for the current test status and known limitations.
+> **Active development — CI compiles real ESP32-S3 firmware and runs native tests, but booting and gameplay on a physical board remain unverified in the checked-in documentation.** See [S3-CHANGES.md](S3-CHANGES.md) for the current test status and known limitations.
 
 ## At a glance
 
@@ -48,77 +48,65 @@ The source and development notes describe terrain and biome generation, caves an
 
 **Not supported as a complete vanilla feature set:** Nether and End dimensions, villages, advanced redstone, enchanting, brewing, and numerous other gameplay systems. This project intentionally prioritizes efficient operation over complete vanilla compatibility.
 
-## Hardware and software prerequisites
+## Using this project in Visual Studio Code
 
-- ESP32-S3 N16R8 development board and USB cable
-- A **2.4 GHz Wi-Fi network** (the ESP32-S3 is not a 5 GHz Wi-Fi device)
-- [Visual Studio Code](https://code.visualstudio.com/) with the [PlatformIO IDE](https://platformio.org/install/ide?install=vscode) extension, or PlatformIO CLI
-- **Java 21 or newer**, to generate Minecraft registry data
-- **Node.js**, Bun, or Deno, for registry conversion
-- A matching **Minecraft Java Edition 1.21.8 server JAR** for generating the registry definitions
+You have **two different downloads**, and the instructions are **not interchangeable**. In either case, the Minecraft server runs **on the ESP32-S3 board**, not inside VS Code. VS Code is used to flash the board, build source when needed, and view serial output.
 
-## Download development firmware
+| Download | Best for | VS Code workflow | Need Java/Node/registry extraction? |
+|---|---|---|---|
+| **Release firmware ZIP** (versioned `ESP32-S3-N16R8-*.zip`) | Flash the exact precompiled CI build | VS Code terminal + `esptool` | **No** |
+| **Main-branch source ZIP** (GitHub **Code → Download ZIP**) | Configure Wi-Fi or change the game code | VS Code + PlatformIO **Build → Upload → Monitor** | **Yes** |
 
-Every successful `main` branch build now creates a **numbered experimental GitHub pre-release** with a ready-to-download ESP32-S3 flashing ZIP. Each ZIP includes the application firmware, bootloader, partition table, build-derived flashing offsets, integrity checksums, and flashing instructions.
+Both options require an **ESP32-S3 N16R8** (16 MB flash, 8 MB octal PSRAM), a USB **data** cable, and a computer with VS Code. The ESP32-S3 uses **2.4 GHz Wi-Fi**, not 5 GHz.
 
-**[Browse releases and download the latest development build](https://github.com/neosmith20/ESP32-S3_Minecraft_Server/releases)**
+> [!IMPORTANT]
+> **Current prebuilt firmware limitation:** Wi-Fi credentials are defined at compile time in `include/globals.h`. The public CI build contains the placeholder values `your-ssid` and `your-password`, so **flashing the Release ZIP alone does not produce a usable Wi-Fi Minecraft server on your network**. Until Wi-Fi provisioning is implemented, choose **Option B** to configure your own network and build/upload locally. Release ZIPs are useful for firmware flashing and version testing, but do not solve the network setup.
 
-Development versions use tags such as `v0.1.0-dev.42`. Older versions stay available for comparison and rollback. Only a hardware-verified milestone will be marked as a stable release. Details: [RELEASING.md](RELEASING.md).
+### Option A — Flash a GitHub Release ZIP using VS Code (no compilation)
 
-> [!CAUTION]
-> Firmware is experimental, and successful CI builds **do not guarantee** successful booting or gameplay on physical hardware. Release ZIPs target the **ESP32-S3 N16R8** configuration. Read the included `FLASHING.md` before flashing, especially if you have existing saved worlds.
+1. Open **[GitHub Releases](https://github.com/neosmith20/ESP32-S3_Minecraft_Server/releases)**, expand **Assets** under a development release, and download the **`ESP32-S3-N16R8-MC1.21.8-<version>.zip`** asset. **Do not choose GitHub's automatic "Source code (zip)"** for this option.
+2. Extract the ZIP to a normal folder. In **VS Code → File → Open Folder**, choose the folder containing `FLASHING.md`, `firmware.bin`, `bootloader.bin`, and `partitions.bin`. This is **not** a PlatformIO source project (there is no `platformio.ini`); the PlatformIO **Build/Upload** buttons do not flash this ZIP.
+3. Install [Python 3](https://www.python.org/downloads/) if needed. In **VS Code → Terminal → New Terminal**, run:
 
-## Getting started
+   ```bash
+   python -m pip install "esptool>=5,<6"
+   python -m esptool version
+   ```
 
-### 1. Clone the project
+   On Windows, use `py -m pip ...` and `py -m esptool ...` if `python` is not recognized.
+4. Connect the ESP32-S3 with a USB **data** cable. Find its serial port (for example **COM5** in Windows Device Manager, **/dev/ttyUSB0** on Linux, or **/dev/cu.usbmodem...** on macOS). Close other serial monitors before flashing.
+5. **Open the included `FLASHING.md` in VS Code and copy its exact `python -m esptool ... write-flash` command into the terminal.** Replace the example `COM5` with your actual port. The command uses the correct offsets for this particular release's bootloader, partition table, and firmware—**do not guess offsets or flash only `firmware.bin` on a blank device**.
+6. After flashing, reset the board if needed. To read serial output from the VS Code terminal, you can run `python -m serial.tools.miniterm COM5 115200` (replace `COM5` with your port). Install `pyserial` if required. Close the monitor before the next flash.
 
-```bash
-git clone https://github.com/neosmith20/ESP32-S3_Minecraft_Server.git
-cd ESP32-S3_Minecraft_Server
-```
+**Result:** The prebuilt binaries are flashed, but the current firmware cannot join your Wi-Fi unless it was separately compiled with credentials matching your network. See the limitation above. See [RELEASING.md](RELEASING.md) for release/version details.
 
-### 2. Generate the Minecraft registries
+### Option B — Download the source ZIP and build/upload with VS Code + PlatformIO
 
-The generated `include/registries.h` and `src/registries.c` are intentionally excluded from source control. They must exist before a normal build.
+1. On the [repository's main page](https://github.com/neosmith20/ESP32-S3_Minecraft_Server), click **Code → Download ZIP** (or clone the repository). Extract it; the folder should contain `platformio.ini`, `src/`, `include/`, `build_registries.js`, and `extract_registries.sh`. A Release firmware ZIP is **not** a substitute for this source folder.
+2. Install [VS Code](https://code.visualstudio.com/) and its **PlatformIO IDE** extension. Use **File → Open Folder** and select the extracted folder **containing `platformio.ini`**, not its parent. Let PlatformIO initialize the project.
+3. Install **Java 21 or newer**, **Node.js** (or Bun/Deno), and—on Windows—**Git Bash** or WSL. In VS Code, open **Terminal → New Terminal**. Select **Git Bash** as the terminal profile on Windows. Check `java -version` and `node --version` (if using Node).
+4. Download the official **Minecraft Java Edition 1.21.8** `server.jar` (used only for extracting registry data). Create a `notchian` folder in the repository root and save the JAR as **`notchian/server.jar`**. It is not shipped in this repository or the firmware ZIP.
+5. From the **repository root** in the VS Code Git Bash/Linux/macOS terminal, run:
 
-Download the **Minecraft Java Edition 1.21.8 server JAR** and save it to `notchian/server.jar`:
+   ```bash
+   bash ./extract_registries.sh
+   ```
 
-```bash
-mkdir -p notchian
-# Place the matching 1.21.8 server.jar in notchian/
-./extract_registries.sh
-```
+   Wait for it to generate `include/registries.h` and `src/registries.c`. The script runs Minecraft's data generator and `build_registries.js`. **This step is required for building from source, but not for Option A.**
+6. Open `include/globals.h` in VS Code and set your **local 2.4 GHz Wi-Fi credentials** in `WIFI_SSID` and `WIFI_PASS`. **Never publish real credentials** in this public repository or commit that edit. They are currently compiled into the binary.
+7. In VS Code, open the **PlatformIO** sidebar → **PROJECT TASKS → esp32s3-n16r8 → General**. Run **Build**, then **Upload**, then **Monitor** (115200 baud). The equivalent commands in a **PlatformIO Core CLI terminal** are:
 
-The script runs Minecraft's data generator and then converts its output with a JavaScript runtime. It requires Java 21+ and either Node.js, Bun, or Deno.
+   ```bash
+   pio run -e esp32s3-n16r8
+   pio run -e esp32s3-n16r8 -t upload
+   pio device monitor -b 115200
+   ```
 
-### 3. Configure Wi-Fi
-
-Edit the ESP32-specific credentials near the start of `include/globals.h`:
-
-```c
-#define WIFI_SSID "your-ssid"
-#define WIFI_PASS "your-password"
-```
-
-> [!CAUTION]
-> **Do not commit real Wi-Fi credentials.** This header is tracked in a public repository. Keep personal values local and check your Git diff before every push. The project should eventually move secrets into a local, untracked configuration mechanism.
-
-### 4. Build and upload
-
-Open the repository in PlatformIO, select the `esp32s3-n16r8` environment and use **Build**, **Upload**, and **Monitor**. Or run:
-
-```bash
-pio run -e esp32s3-n16r8
-pio run -e esp32s3-n16r8 -t upload
-pio device monitor -b 115200
-```
-
-When the board joins Wi-Fi, check the serial monitor for its IP address. On the same trusted network, connect from **Minecraft Java Edition 1.21.8** using that IP address; the default server port is **25565**.
-
-In the Minecraft launcher, select or create an installation for **Java Edition 1.21.8**. Then open **Multiplayer → Add Server**, and enter the device IP address shown in the serial monitor.
+   If `pio` is not recognized in the regular VS Code terminal, use the **PlatformIO Core CLI** terminal or the sidebar buttons. PlatformIO may need to download the ESP-IDF toolchain on the first build.
+8. When the board connects to Wi-Fi, the **serial monitor** should show its IP address. In the Minecraft launcher, select **Java Edition 1.21.8**, then choose **Multiplayer → Add Server** and enter that IP address. TCP port **25565** is the default.
 
 > [!WARNING]
-> Moving from version 1 to version 2 changes the world-storage representation. The existing notes say the old world is deleted on first start. **Back up any valuable world data and read [S3-CHANGES.md](S3-CHANGES.md) before upgrading.**
+> Changing from an older world-storage version or flashing an incompatible partition layout may destroy saved worlds. Back up world data before upgrading and review [S3-CHANGES.md](S3-CHANGES.md). The server runs in offline/authentication-disabled mode and should remain on a trusted local network.
 
 ## Customizing blocks and recipes
 
@@ -141,7 +129,7 @@ The repository contains host-side testing utilities:
 - `tests/e2e_client.py` — scripted protocol client
 - `tests/make_stub_registries.py` — placeholder registry data for host-side tests
 
-The placeholder registry data is **not suitable for production game content**. PC tests do not validate ESP-IDF compilation, Wi-Fi behavior, PSRAM allocation, flash persistence, or performance on the physical board.
+The placeholder registry data is **not suitable for production game content**. GitHub Actions now generates real registries and compiles ESP-IDF firmware as well as running host tests, but CI cannot validate physical Wi-Fi connectivity, PSRAM behavior, flash persistence, or on-device performance.
 
 See [S3-CHANGES.md](S3-CHANGES.md) for detailed test history, troubleshooting, and differences from upstream. The original Bareiron guide is preserved in [BAREIRON-README.md](BAREIRON-README.md).
 
