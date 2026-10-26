@@ -22,7 +22,9 @@ GitHub separately offers its standard source ZIP/tar.gz files for each tag. The 
 
 ## How to download
 
-Open [Releases](https://github.com/neosmith20/ESP32-S3_Minecraft_Server/releases), choose the pre-release for the commit you want, and expand **Assets**. Download the versioned `ESP32-S3-N16R8-*.zip`, extract it, and follow `FLASHING.md`.
+Open [Releases](https://github.com/neosmith20/ESP32-S3_Minecraft_Server/releases), choose the pre-release for the commit you want, and expand **Assets**. Download the **versioned ESP32-S3 firmware ZIP**, not GitHub's automatic **Source code (zip)**. Extract it, open that folder in **Visual Studio Code**, and follow the bundled `FLASHING.md` using the **VS Code integrated terminal** and Python esptool. PlatformIO's Build/Upload buttons **cannot** be used directly on the prebuilt release ZIP, because it has no `platformio.ini`.
+
+**Current limitation:** the prebuilt firmware has hardcoded placeholder Wi-Fi credentials and will not normally connect to your network. To run your own Wi-Fi Minecraft server, download the **main-branch source ZIP** and follow the complete **[VS Code + PlatformIO walkthrough in the README](README.md#option-b--download-the-source-zip-and-buildupload-with-vs-code--platformio)**; generate registries, configure Wi-Fi locally, build, and upload. Never push Wi-Fi secrets to GitHub.
 
 Firmware is experimental. Building is not the same as successfully booting and operating on physical ESP32-S3 hardware. Target board is N16R8 (16 MB flash, 8 MB PSRAM), not other configurations.
 
