@@ -1,6 +1,6 @@
 # ESP-IDF/PlatformIO component for the Minecraft server.
 # Enumerate C sources only; do not pass YAML or build files to the compiler.
-file(GLOB app_sources CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/*.c")
+file(GLOB app_sources "${CMAKE_CURRENT_LIST_DIR}/*.c")
 
 idf_component_register(
   SRCS ${app_sources}
