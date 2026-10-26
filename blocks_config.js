@@ -199,7 +199,8 @@ const columnBlocks = new Set([
 const separateUpdateBlocks = new Set(["torch", "wall_torch", "chest", "lantern"]);
 // Drops need a pickaxe (any kind)
 function needsPickaxe (name) {
-  if (name.endsWith("_ore") || name.endsWith("_block")) return name !== "snow_block";
+  if (name.endsWith("_ore")) return true;
+  if (["coal_block", "iron_block", "gold_block", "diamond_block", "redstone_block", "copper_block"].includes(name)) return true;
   if (name === "furnace" || name === "iron_bars" || name === "lantern") return true;
   if (name === "stone_button" || name === "stone_pressure_plate") return true;
   if (/(^|_)(stone|cobblestone|stone_brick|stone_bricks|sandstone|smooth_stone)(_|$)/.test(name)) return true;

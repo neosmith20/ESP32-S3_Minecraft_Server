@@ -225,6 +225,21 @@ int main (void) {
   handlePlayerAction(p, 2, X, gy + 1, Z);
   CHECK(getBlockAt(X, gy + 1, Z) == B_air && countItem(p, I_chest) == 1, "chest broken, item returned");
 
+  // ---- mining gives drops ----
+  hold(0, 0);
+  makeBlockChange(X, gy + 1, Z, B_dirt);
+  handlePlayerAction(p, 2, X, gy + 1, Z);
+  CHECK(countItem(p, I_dirt) == 1, "mining dirt gives a dirt item");
+  makeBlockChange(X, gy + 1, Z, B_grass_block);
+  handlePlayerAction(p, 2, X, gy + 1, Z);
+  CHECK(countItem(p, I_dirt) == 2, "mining grass gives a dirt item");
+  makeBlockChange(X, gy + 1, Z, B_oak_log);
+  handlePlayerAction(p, 2, X, gy + 1, Z);
+  CHECK(countItem(p, I_oak_log) == 1, "mining a log gives a log");
+  makeBlockChange(X, gy + 1, Z, B_sand);
+  handlePlayerAction(p, 2, X, gy + 1, Z);
+  CHECK(countItem(p, I_sand) == 1, "mining sand gives sand");
+
   // ---- save/load roundtrip ----
   makeBlockChange(10, 70, 10, B_gold_block);
   makeBlockChange(-11, 71, 12, BMIN_oak_door + OFF_door[2][1][1]);
