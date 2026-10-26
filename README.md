@@ -21,6 +21,13 @@ Run a lightweight Minecraft server on an ESP32-S3 **N16R8** board (16 MB flash, 
 
 This is a resource-constrained, experimental implementation, **not a full vanilla Minecraft server**. Gameplay and protocol behavior can differ from the official server.
 
+## Minecraft client compatibility
+
+- **Edition:** Minecraft **Java Edition**, not Bedrock Edition or console Minecraft.
+- **Version:** **1.21.8 only** (protocol 772); other versions are not expected to connect.
+- **Game mode:** Survival by default.
+- **Authentication:** The implementation currently uses offline mode, so player-account authentication is not performed. **Only allow trusted players onto a trusted network.**
+
 ## What this ESP32-S3 adaptation adds
 
 According to the current [development notes](S3-CHANGES.md), the project includes:
@@ -35,9 +42,16 @@ According to the current [development notes](S3-CHANGES.md), the project include
 
 These describe implemented source changes, **not a claim that all features have been validated on real hardware**.
 
+### Current gameplay scope
+
+The source and development notes describe terrain and biome generation, caves and ores, mining and tools, crafting and furnaces, health and hunger, chests, day/night, animals and some hostile mobs, and multiplayer support. Treat these as **implemented or intended behaviors pending hardware validation**, not as a promise of full vanilla parity.
+
+**Not supported as a complete vanilla feature set:** Nether and End dimensions, villages, advanced redstone, enchanting, brewing, and numerous other gameplay systems. This project intentionally prioritizes efficient operation over complete vanilla compatibility.
+
 ## Hardware and software prerequisites
 
 - ESP32-S3 N16R8 development board and USB cable
+- A **2.4 GHz Wi-Fi network** (the ESP32-S3 is not a 5 GHz Wi-Fi device)
 - [Visual Studio Code](https://code.visualstudio.com/) with the [PlatformIO IDE](https://platformio.org/install/ide?install=vscode) extension, or PlatformIO CLI
 - **Java 21 or newer**, to generate Minecraft registry data
 - **Node.js**, Bun, or Deno, for registry conversion
@@ -89,6 +103,8 @@ pio device monitor -b 115200
 ```
 
 When the board joins Wi-Fi, check the serial monitor for its IP address. On the same trusted network, connect from **Minecraft Java Edition 1.21.8** using that IP address; the default server port is **25565**.
+
+In the Minecraft launcher, select or create an installation for **Java Edition 1.21.8**. Then open **Multiplayer → Add Server**, and enter the device IP address shown in the serial monitor.
 
 > [!WARNING]
 > Moving from version 1 to version 2 changes the world-storage representation. The existing notes say the old world is deleted on first start. **Back up any valuable world data and read [S3-CHANGES.md](S3-CHANGES.md) before upgrading.**
