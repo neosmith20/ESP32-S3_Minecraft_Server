@@ -16,6 +16,7 @@
 #include "crafting.h"
 #include "blocks.h"
 
+#define IS_WATER_T(b) ((b) >= B_water && (b) < B_water + 16)
 static int fails = 0;
 #define CHECK(cond, msg) do { if (!(cond)) { printf("FAIL: %s (line %d)\n", msg, __LINE__); fails ++; } else printf("ok:   %s\n", msg); } while (0)
 
@@ -328,6 +329,51 @@ int main (void) {
   CHECK(seeds > 20 && seeds < 90, "short grass gives seeds about 1 time in 8");
   // food
   CHECK(1, "farming tests done");
+
+  // ---- buckets ----
+  CHECK(craft((uint16_t[9]){ I_iron_ingot, 0, I_iron_ingot,  0, I_iron_ingot, 0,  0, 0, 0 }, &n) == I_bucket, "bucket recipe");
+  clearArea();
+  // Player stands at (X+0.5, gy+1, Z+0.5) and looks south and 45 degrees down
+  p->x = X; p->z = Z; p->y = gy + 1;
+  player_exact[0][0] = X + 0.5; player_exact[0][1] = gy + 1; player_exact[0][2] = Z + 0.5;
+  makeBlockChange(X, gy, Z + 2, B_water);
+  hold(I_bucket, 2);
+  CHECK(handleBucketUse(p, 0.0f, 45.0f), "bucket use is handled");
+  CHECK(getBlockAt(X, gy, Z + 2) == B_air, "empty bucket picks up a water source");
+  CHECK(p->inventory_items[0] == I_bucket && p->inventory_count[0] == 1 && countItem(p, I_water_bucket) == 1, "one bucket is filled");
+  // aiming away from water does nothing
+  makeBlockChange(X, gy, Z + 2, B_water);
+  hold(I_bucket, 1);
+  handleBucketUse(p, 90.0f, 45.0f);
+  CHECK(getBlockAt(X, gy, Z + 2) == B_water && p->inventory_items[0] == I_bucket, "aiming away leaves the water alone");
+  // flowing water is not picked up
+  makeBlockChange(X, gy, Z + 2, B_water + 3);
+  handleBucketUse(p, 0.0f, 45.0f);
+  CHECK(getBlockAt(X, gy, Z + 2) == B_water + 3 && p->inventory_items[0] == I_bucket, "flowing water can't be picked up");
+  // lava
+  makeBlockChange(X, gy, Z + 2, B_lava);
+  handleBucketUse(p, 0.0f, 45.0f);
+  CHECK(p->inventory_items[0] == I_lava_bucket && getBlockAt(X, gy, Z + 2) == B_air, "lava source fills a lava bucket");
+  // placing
+  makeBlockChange(X, gy, Z + 2, B_stone);
+  hold(I_water_bucket, 1);
+  handleBucketUse(p, 0.0f, 45.0f);
+  int found = 0;
+  for (int dz = -1; dz <= 3; dz ++) for (int dy = 1; dy <= 2; dy ++) if (getBlockAt(X, gy + dy, Z + dz) == B_water) found ++;
+  CHECK(found >= 1 && p->inventory_items[0] == I_bucket, "water bucket places water and becomes empty");
+  CHECK(getBlockAt(X, gy, Z + 2) == B_stone, "the floor is untouched");
+  { int total = 0; for (int dx = -6; dx <= 6; dx ++) for (int dz = -6; dz <= 6; dz ++) for (int dy = 1; dy <= 3; dy ++) if (IS_WATER_T(getBlockAt(X + dx, gy + dy, Z + dz))) total ++; printf("info: water cells after placing a bucket: %d\n", total); CHECK(total > 1, "placed water spreads out"); }
+  hold(I_lava_bucket, 1);
+  handleBucketUse(p, 0.0f, 45.0f);
+  CHECK(p->inventory_items[0] == I_bucket || p->inventory_items[0] == I_lava_bucket, "second placement is safe");
+  hold(I_dirt, 1);
+  CHECK(!handleBucketUse(p, 0.0f, 45.0f), "other items are not buckets");
+  CHECK(getItemStackSize(I_water_bucket) == 1 && getItemStackSize(I_bucket) == 16, "bucket stack sizes");
+  // potato, carrot and bread food values exist
+  p->hunger = 5;
+  hold(I_bread, 1);
+  handlePlayerEating(p, false);
+  CHECK(p->hunger == 10, "eating bread restores 5 hunger");
 
   // ---- save/load roundtrip ----
   makeBlockChange(10, 70, 10, B_gold_block);

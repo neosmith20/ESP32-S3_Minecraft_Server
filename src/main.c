@@ -203,6 +203,14 @@ void handlePacket (int client_fd, int length, int packet_id, int state) {
         PlayerData *player;
         if (getPlayerData(client_fd, &player)) break;
 
+        // Remember the exact position, for aiming buckets
+        if (packet_id == 0x1D || packet_id == 0x1E) {
+          int player_index = player - player_data;
+          player_exact[player_index][0] = x;
+          player_exact[player_index][1] = y;
+          player_exact[player_index][2] = z;
+        }
+
         uint16_t block_feet = getBlockAt(player->x, player->y, player->z);
         uint8_t swimming = block_feet >= B_water && block_feet < B_water + 8;
 

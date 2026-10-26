@@ -651,11 +651,14 @@ int cs_useItem (int client_fd) {
   uint8_t hand = readByte(client_fd);
   int sequence = readVarInt(client_fd);
 
-  // Ignore yaw/pitch
-  recv_all(client_fd, recv_buffer, 8, false);
+  // The direction the player is looking in, used for aiming buckets
+  float yaw = readFloat(client_fd);
+  float pitch = readFloat(client_fd);
 
   PlayerData *player;
   if (getPlayerData(client_fd, &player)) return 1;
+
+  if (handleBucketUse(player, yaw, pitch)) return 0;
 
   handlePlayerUseItem(player, 0, 0, 0, 255, 0);
 

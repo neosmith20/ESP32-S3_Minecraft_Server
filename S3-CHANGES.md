@@ -2,6 +2,7 @@
 
 ## Version 2.1
 
+* Buckets: craft with 3 iron ingots, pick up water and lava sources, place them again.
 * Farming: farmland, wheat, carrots, potatoes, hoes, bread, baked potatoes, bone meal on crops.
 * Fixed: grass blocks dropped nothing when mined by hand.
 * The server now recreates a world file that has the wrong size instead of stopping.

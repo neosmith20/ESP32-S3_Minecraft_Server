@@ -51,6 +51,7 @@ BIG_ARRAY_ATTR BlockChange block_changes[MAX_BLOCK_CHANGES];
 int block_changes_count = 0;
 
 PlayerData player_data[MAX_PLAYERS];
+double player_exact[MAX_PLAYERS][3];
 int player_data_count = 0;
 
 MobData mob_data[MAX_MOBS];

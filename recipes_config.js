@@ -62,6 +62,7 @@ for (const [name, ingredient] of Object.entries(armorMaterials)) {
   shaped(`${name}_leggings`, 1, ["MMM", "M.M", "M.M"], key);
   shaped(`${name}_boots`, 1, ["M.M", "M.M"], key);
 }
+shaped("bucket", 1, ["I.I", ".I."], { I: "iron_ingot" });
 shaped("shears", 1, [".I", "I."], { I: "iron_ingot" });
 
 // ------------------------------------------------------------ basic materials

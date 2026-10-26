@@ -11,6 +11,7 @@
 #include "varnum.h"
 #include "packets.h"
 #include "registries.h"
+#include <math.h>
 #include "blocks.h"
 #include "worldgen.h"
 #include "structures.h"
@@ -211,6 +212,7 @@ void handlePlayerJoin (PlayerData* player) {
       givePlayerItem(player, I_coal, 16);
       givePlayerItem(player, I_oak_log, 16);
       givePlayerItem(player, I_iron_ingot, 8);
+      givePlayerItem(player, I_bucket, 2);
     }
   #endif
 
@@ -1022,7 +1024,13 @@ uint8_t getItemStackSize (uint16_t item) {
   ) return 1;
 
   if (
-    item == I_snowball
+    item == I_water_bucket ||
+    item == I_lava_bucket
+  ) return 1;
+
+  if (
+    item == I_snowball ||
+    item == I_bucket
   ) return 16;
 
   return 64;
@@ -2042,6 +2050,92 @@ void hurtEntity (int entity_id, int attacker_id, uint8_t damage_type, uint8_t da
       sc_systemChat(client_fd, (char *)recv_buffer, strlen((char *)recv_buffer));
     }
   }
+
+}
+
+// Uses a bucket the way the player is aiming it: an empty bucket picks up a
+// water or lava source, a full bucket places it in front of the player.
+// Returns true if the held item is a bucket (whether or not anything happened).
+uint8_t handleBucketUse (PlayerData *player, float yaw, float pitch) {
+
+  uint16_t *item = &player->inventory_items[player->hotbar];
+  uint8_t *count = &player->inventory_count[player->hotbar];
+  if (*count == 0) return false;
+  if (*item != I_bucket && *item != I_water_bucket && *item != I_lava_bucket) return false;
+
+  int index = player - player_data;
+  double ex, ey, ez;
+  if (index >= 0 && index < MAX_PLAYERS && player_exact[index][1] != 0) {
+    ex = player_exact[index][0];
+    ey = player_exact[index][1] + 1.62;
+    ez = player_exact[index][2];
+  } else {
+    ex = player->x + 0.5;
+    ey = player->y + 1.62;
+    ez = player->z + 0.5;
+  }
+
+  // Direction vector from yaw and pitch (in degrees)
+  float yr = yaw * 3.14159265f / 180.0f, pr = pitch * 3.14159265f / 180.0f;
+  float dx = -sinf(yr) * cosf(pr), dy = -sinf(pr), dz = cosf(yr) * cosf(pr);
+
+  short px = 0, pz = 0; int py = 0;
+  uint8_t have_prev = false;
+
+  // Walk along the line of sight, up to 5 blocks
+  for (float t = 0.0f; t <= 5.0f; t += 0.05f) {
+    double fx = ex + dx * t, fy = ey + dy * t, fz = ez + dz * t;
+    short cx = (short)floor(fx), cz = (short)floor(fz);
+    int cy = (int)floor(fy);
+    if (cy < 1 || cy > 250) break;
+    if (have_prev && cx == px && cy == py && cz == pz) continue;
+
+    uint16_t block = getBlockAt(cx, cy, cz);
+
+    if (*item == I_bucket) {
+      // Pick up: only water and lava sources count, other fluid is waded through
+      if (block == B_water || block == B_lava) {
+        if (makeBlockChange(cx, cy, cz, B_air)) return true;
+        uint16_t filled = block == B_water ? I_water_bucket : I_lava_bucket;
+        if (*count == 1) {
+          *item = filled;
+        } else {
+          *count -= 1;
+          if (givePlayerItem(player, filled, 1)) { /* inventory full: the empty bucket is kept */ }
+        }
+        sc_setContainerSlot(player->client_fd, 0, serverSlotToClientSlot(0, player->hotbar), *count, *item);
+        // Let neighboring fluid react to the missing source
+        checkFluidUpdate(cx, cy + 1, cz, getBlockAt(cx, cy + 1, cz));
+        checkFluidUpdate(cx - 1, cy, cz, getBlockAt(cx - 1, cy, cz));
+        checkFluidUpdate(cx + 1, cy, cz, getBlockAt(cx + 1, cy, cz));
+        checkFluidUpdate(cx, cy, cz - 1, getBlockAt(cx, cy, cz - 1));
+        checkFluidUpdate(cx, cy, cz + 1, getBlockAt(cx, cy, cz + 1));
+        return true;
+      }
+      if (!isPassableBlock(block) && !IS_WATER(block) && !IS_LAVA(block) && block != B_air) return true;
+    } else {
+      // Place: the fluid goes into the last free space before something solid
+      uint8_t solid = !isReplaceableBlock(block) && !isPassableBlock(block);
+      if (solid) {
+        if (!have_prev) return true;
+        uint16_t before = getBlockAt(px, py, pz);
+        uint16_t fluid = *item == I_water_bucket ? B_water : B_lava;
+        if (before == fluid || !isReplaceableBlock(before)) return true;
+        // Don't flood the player's own head
+        if (px == player->x && pz == player->z && (py == player->y || py == player->y + 1)) return true;
+        if (makeBlockChange(px, py, pz, fluid)) return true;
+        *item = I_bucket;
+        sc_setContainerSlot(player->client_fd, 0, serverSlotToClientSlot(0, player->hotbar), *count, *item);
+        checkFluidUpdate(px, py, pz, fluid);
+        return true;
+      }
+    }
+
+    px = cx; py = cy; pz = cz;
+    have_prev = true;
+  }
+
+  return true;
 
 }
 

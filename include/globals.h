@@ -343,6 +343,8 @@ extern BlockChange block_changes[MAX_BLOCK_CHANGES];
 extern int block_changes_count;
 
 extern PlayerData player_data[MAX_PLAYERS];
+// Exact position of each player (player_data only keeps block coordinates)
+extern double player_exact[MAX_PLAYERS][3];
 extern int player_data_count;
 
 extern MobData mob_data[MAX_MOBS];
