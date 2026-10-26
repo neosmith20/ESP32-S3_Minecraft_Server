@@ -170,14 +170,61 @@ void writeBlockChangesToDisk (int from, int to) {
   fclose(file);
 }
 
-// Remembers which block change entries need to be written on the next
-// interval sync (see DISK_SYNC_BLOCKS_ON_INTERVAL). Only the span between
-// the lowest and highest changed entry gets written, not the whole array.
-static int dirty_from = -1, dirty_to = -1;
+// Remembers which parts of the block change list need to be written to flash
+// (see DISK_SYNC_BLOCKS_ON_INTERVAL). The list is split into 4 KB pages, the
+// size of a flash sector, and only pages with changes get written.
+#define SAVE_PAGE_BYTES 4096
+#define SAVE_PAGES ((sizeof(block_changes) + SAVE_PAGE_BYTES - 1) / SAVE_PAGE_BYTES)
+static uint8_t dirty_pages[(SAVE_PAGES + 7) / 8];
+static int dirty_count = 0;
 
 void markBlockChangesDirty (int from, int to) {
-  if (dirty_from == -1 || from < dirty_from) dirty_from = from;
-  if (dirty_to == -1 || to > dirty_to) dirty_to = to;
+  if (from < 0) from = 0;
+  if (to >= MAX_BLOCK_CHANGES) to = MAX_BLOCK_CHANGES - 1;
+  if (to < from) return;
+  size_t first = ((size_t)from * sizeof(BlockChange)) / SAVE_PAGE_BYTES;
+  size_t last = (((size_t)to + 1) * sizeof(BlockChange) - 1) / SAVE_PAGE_BYTES;
+  for (size_t pg = first; pg <= last && pg < SAVE_PAGES; pg ++) {
+    if (dirty_pages[pg >> 3] & (1 << (pg & 7))) continue;
+    dirty_pages[pg >> 3] |= 1 << (pg & 7);
+    dirty_count ++;
+  }
+}
+
+// Writes up to `max_pages` changed pages of the block change list to flash.
+// Returns how many pages were written.
+int flushDirtyBlockPages (int max_pages) {
+
+  if (dirty_count == 0 || max_pages <= 0) return 0;
+
+  FILE *file = fopen(FILE_PATH, "r+b");
+  if (!file) {
+    perror("Failed to open \"world2.bin\" for saving block changes");
+    return 0;
+  }
+
+  static size_t next_page = 0;
+  int written_pages = 0;
+  for (size_t n = 0; n < SAVE_PAGES && written_pages < max_pages; n ++) {
+    size_t pg = (next_page + n) % SAVE_PAGES;
+    if (!(dirty_pages[pg >> 3] & (1 << (pg & 7)))) continue;
+    size_t offset = pg * SAVE_PAGE_BYTES;
+    size_t length = sizeof(block_changes) - offset;
+    if (length > SAVE_PAGE_BYTES) length = SAVE_PAGE_BYTES;
+    if (fseek(file, (long)offset, SEEK_SET) != 0) break;
+    if (fwrite((uint8_t *)block_changes + offset, 1, length, file) != length) {
+      perror("Failed to write block changes to \"world2.bin\"");
+      break;
+    }
+    dirty_pages[pg >> 3] &= ~(1 << (pg & 7));
+    dirty_count --;
+    written_pages ++;
+    next_page = pg + 1;
+  }
+
+  fclose(file);
+  return written_pages;
+
 }
 
 // Writes all player data to disk
@@ -218,11 +265,7 @@ void writeAllDataToDisk () {
 
   writePlayerDataToDisk();
   #ifdef DISK_SYNC_BLOCKS_ON_INTERVAL
-  if (dirty_from != -1) {
-    int from = dirty_from, to = dirty_to;
-    dirty_from = dirty_to = -1;
-    writeBlockChangesToDisk(from, to);
-  }
+  flushDirtyBlockPages(1 << 30);
   #endif
 
   #ifdef DEV_LOG_STALLS
@@ -234,19 +277,26 @@ void writeAllDataToDisk () {
 // Writes data queued for interval writes, but only if enough time has passed
 void writeDataToDiskOnInterval () {
 
-  // Skip this write if enough time hasn't passed since the last one
-  if (get_program_time() - last_disk_sync_time < DISK_SYNC_INTERVAL) return;
-  last_disk_sync_time = get_program_time();
+  int64_t now = get_program_time();
 
-  // Write full player data and block changes buffers
+  #ifdef DISK_SYNC_BLOCKS_ON_INTERVAL
+  // Block changes are saved a couple of pages at a time every few seconds,
+  // so a restart loses at most a few seconds of building
+  static int64_t last_block_sync_time = 0;
+  if (dirty_count != 0 && now - last_block_sync_time >= BLOCK_SYNC_INTERVAL) {
+    last_block_sync_time = now;
+    flushDirtyBlockPages(BLOCK_SYNC_PAGES);
+  }
+  #endif
+
+  // Skip the full write if enough time hasn't passed since the last one
+  if (now - last_disk_sync_time < DISK_SYNC_INTERVAL) return;
+  last_disk_sync_time = now;
+
+  // Write full player data and all remaining block changes
   writePlayerDataToDisk();
   #ifdef DISK_SYNC_BLOCKS_ON_INTERVAL
-  // Only write the entries that changed since the last sync
-  if (dirty_from != -1) {
-    int from = dirty_from, to = dirty_to;
-    dirty_from = dirty_to = -1;
-    writeBlockChangesToDisk(from, to);
-  }
+  flushDirtyBlockPages(1 << 30);
   #endif
 
 }

@@ -228,6 +228,10 @@ void disconnectClient (int *client_fd, int cause) {
   client_count --;
   setClientState(*client_fd, STATE_NONE);
   handlePlayerDisconnect(*client_fd);
+  #ifdef DISK_SYNC_BLOCKS_ON_INTERVAL
+    // Someone leaving is a good moment to save what has been built so far
+    if (was_playing) flushDirtyBlockPages(1 << 30);
+  #endif
   #ifdef _WIN32
   closesocket(*client_fd);
   printf("Disconnected client %d, cause: %d, errno: %d\n", *client_fd, cause, WSAGetLastError());
