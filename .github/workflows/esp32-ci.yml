@@ -138,6 +138,21 @@ jobs:
           test -s compile_commands.json
           python -c 'import json; d=json.load(open("compile_commands.json")); assert d, "empty ESP-IDF compilation database"; print(len(d), "compile commands")'
 
+      - name: Package portable ESP32-S3 flashing images
+        env:
+          SOURCE_SHA: ${{ github.sha }}
+          BUILD_NUMBER: ${{ github.run_number }}
+        run: |
+          set -euo pipefail
+          SERIES="$(tr -d '\r\n ' < release-series.txt)"
+          python3 scripts/package_firmware.py \
+            --build-dir .pio/build/esp32s3-n16r8 \
+            --output dist \
+            --version "v${SERIES}-dev.${BUILD_NUMBER}" \
+            --sha "${SOURCE_SHA}" \
+            --minecraft "1.21.8"
+          (cd dist && sha256sum -c -- *.zip.sha256)
+
       - name: Upload firmware and target compilation database
         uses: actions/upload-artifact@v4
         with:
@@ -147,3 +162,79 @@ jobs:
             compile_commands.json
           if-no-files-found: error
           retention-days: 7
+
+      - name: Upload tested release bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: esp32s3-release-bundle
+          path: |
+            dist/*.zip
+            dist/*.zip.sha256
+          if-no-files-found: error
+          retention-days: 14
+
+  publish-development-release:
+    name: Publish versioned development pre-release
+    needs: [registries, host-tests, esp32-firmware]
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    timeout-minutes: 10
+    steps:
+      - name: Checkout release metadata
+        uses: actions/checkout@v4
+
+      - name: Download verified firmware release bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: esp32s3-release-bundle
+          path: release-assets
+
+      - name: Verify ZIP checksum and development tag
+        id: metadata
+        env:
+          BUILD_NUMBER: ${{ github.run_number }}
+        run: |
+          set -euo pipefail
+          SERIES="$(tr -d '\r\n ' < release-series.txt)"
+          [[ "${SERIES}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          echo "tag=v${SERIES}-dev.${BUILD_NUMBER}" >> "$GITHUB_OUTPUT"
+          (
+            cd release-assets
+            test "$(find . -maxdepth 1 -name '*.zip' -type f | wc -l)" -eq 1
+            test "$(find . -maxdepth 1 -name '*.zip.sha256' -type f | wc -l)" -eq 1
+            sha256sum -c -- *.zip.sha256
+          )
+
+      - name: Publish permanent numbered GitHub pre-release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ steps.metadata.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          name: ESP32-S3 Minecraft Server ${{ steps.metadata.outputs.tag }} (Minecraft 1.21.8)
+          prerelease: true
+          make_latest: false
+          generate_release_notes: true
+          append_body: true
+          body: |
+            **Experimental firmware — NOT hardware-validated or production-ready.**
+            Target: ESP32-S3 N16R8 (16 MB flash / 8 MB PSRAM).
+            Compatible Minecraft client: Java Edition 1.21.8 (protocol 772).
+
+            The firmware build, host unit tests, and protocol end-to-end test passed.
+            Clang-Tidy is advisory, not a clean-security certification.
+
+            Download the versioned ZIP from Assets. It contains all three flash
+            images, correct flash offsets, checksums, and FLASHING.md.
+            Source revision: ${{ github.sha }}
+            Release instructions: https://github.com/neosmith20/ESP32-S3_Minecraft_Server/blob/main/RELEASING.md
+          files: |
+            release-assets/*.zip
+            release-assets/*.zip.sha256
+          fail_on_unmatched_files: true
+
+      - name: Release link in job summary
+        run: |
+          echo "### Development release published" >> "$GITHUB_STEP_SUMMARY"
+          echo "https://github.com/${GITHUB_REPOSITORY}/releases/tag/${{ steps.metadata.outputs.tag }}" >> "$GITHUB_STEP_SUMMARY"
