@@ -1,0 +1,37 @@
+
+name: C/C++ Code Analysis
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  cpp-linter:
+    name: Clang-Tidy & Clang-Format
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Analyze C/C++ code
+        id: linter
+        uses: cpp-linter/cpp-linter-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          version: '21'
+          style: 'llvm'
+          tidy-checks: 'bugprone-*,clang-analyzer-*,performance-*,portability-*'
+          files-changed-only: false
+          step-summary: true
+          file-annotations: true
+
+      - name: Fail if issues are detected
+        if: steps.linter.outputs.checks-failed > 0
+        run: exit 1
