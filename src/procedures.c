@@ -2143,6 +2143,36 @@ uint8_t handleBucketUse (PlayerData *player, float yaw, float pitch) {
 
 }
 
+// Whether a mob standing at (mx, my, mz) can hit a player standing at
+// (px, py, pz), who is at most 2 blocks away. Anything solid between them
+// (a wall, a closed door, glass) blocks the hit.
+uint8_t mobCanReachPlayer (short mx, uint8_t my, short mz, short px, uint8_t py, short pz) {
+
+  int dx = px - mx, dz = pz - mz;
+  short cells_x[2], cells_z[2];
+  int n = 0;
+
+  if (abs(dx) + abs(dz) <= 1) return true; // right next to each other
+  if (abs(dx) == 2 && dz == 0) { cells_x[0] = mx + dx / 2; cells_z[0] = mz; n = 1; }
+  else if (abs(dz) == 2 && dx == 0) { cells_x[0] = mx; cells_z[0] = mz + dz / 2; n = 1; }
+  else if (abs(dx) == 1 && abs(dz) == 1) {
+    // Diagonal: the hit gets through if either corner is open
+    cells_x[0] = px; cells_z[0] = mz;
+    cells_x[1] = mx; cells_z[1] = pz;
+    n = 2;
+  } else return false; // out of reach
+
+  // The line has to be open at the height of the player's feet and head
+  for (int i = 0; i < n; i ++) {
+    if (
+      isPassableBlock(getBlockAt(cells_x[i], py, cells_z[i])) &&
+      isPassableBlock(getBlockAt(cells_x[i], py + 1, cells_z[i]))
+    ) return true;
+  }
+  return false;
+
+}
+
 // Grows crops and keeps farmland wet or dries it out. Called every few
 // seconds. Only a limited number of plants is looked at per call, so big farms
 // grow a little slower rather than stalling the server. `speed` multiplies
@@ -2416,7 +2446,10 @@ void handleServerTick (int64_t time_since_last_tick) {
     } else { // Hostile mob movement handling
 
       // If we're already next to the player, hurt them and skip movement
-      if (closest_dist < 3 && abs(old_y - closest_player->y) < 2) {
+      if (
+        closest_dist < 3 && abs(old_y - closest_player->y) < 2 &&
+        mobCanReachPlayer(old_x, old_y, old_z, closest_player->x, closest_player->y, closest_player->z)
+      ) {
         hurtEntity(closest_player->client_fd, entity_id, D_generic, 6);
         continue;
       }

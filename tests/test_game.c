@@ -410,6 +410,32 @@ int main (void) {
     CHECK(f.craft_count[2] == 64, "a full stack of 64 cooks with one coal block");
   }
 
+  // ---- mobs can't hit through blocks ----
+  clearArea();
+  CHECK(mobCanReachPlayer(X, gy + 1, Z, X + 2, gy + 1, Z), "a mob can hit across open air");
+  CHECK(mobCanReachPlayer(X, gy + 1, Z, X + 1, gy + 1, Z), "a mob can hit right next to the player");
+  makeBlockChange(X + 1, gy + 1, Z, BMIN_oak_door + OFF_door[DIR_EAST][0][0]);
+  makeBlockChange(X + 1, gy + 2, Z, BMIN_oak_door + OFF_door[DIR_EAST][1][0]);
+  CHECK(!mobCanReachPlayer(X, gy + 1, Z, X + 2, gy + 1, Z), "a closed door blocks the hit");
+  makeBlockChange(X + 1, gy + 1, Z, BMIN_oak_door + OFF_door[DIR_EAST][0][1]);
+  makeBlockChange(X + 1, gy + 2, Z, BMIN_oak_door + OFF_door[DIR_EAST][1][1]);
+  CHECK(mobCanReachPlayer(X, gy + 1, Z, X + 2, gy + 1, Z), "an open door lets the hit through");
+  makeBlockChange(X + 1, gy + 1, Z, B_stone);
+  CHECK(!mobCanReachPlayer(X, gy + 1, Z, X + 2, gy + 1, Z), "a wall blocks the hit");
+  makeBlockChange(X + 1, gy + 1, Z, B_air);
+  makeBlockChange(X + 1, gy + 2, Z, B_stone);
+  CHECK(!mobCanReachPlayer(X, gy + 1, Z, X + 2, gy + 1, Z), "a block at head height blocks the hit");
+  makeBlockChange(X + 1, gy + 2, Z, B_air);
+  makeBlockChange(X, gy + 1, Z + 1, B_stone);
+  makeBlockChange(X + 1, gy + 1, Z, B_stone);
+  CHECK(!mobCanReachPlayer(X, gy + 1, Z, X + 1, gy + 1, Z + 1), "both corners blocked stops a diagonal hit");
+  makeBlockChange(X + 1, gy + 1, Z, B_air);
+  CHECK(mobCanReachPlayer(X, gy + 1, Z, X + 1, gy + 1, Z + 1), "one open corner lets a diagonal hit through");
+  makeBlockChange(X, gy + 1, Z + 1, B_air);
+  makeBlockChange(X + 1, gy + 1, Z, B_glass);
+  CHECK(!mobCanReachPlayer(X, gy + 1, Z, X + 2, gy + 1, Z), "glass blocks the hit");
+  makeBlockChange(X + 1, gy + 1, Z, B_air);
+
   // ---- save/load roundtrip ----
   makeBlockChange(10, 70, 10, B_gold_block);
   makeBlockChange(-11, 71, 12, BMIN_oak_door + OFF_door[2][1][1]);

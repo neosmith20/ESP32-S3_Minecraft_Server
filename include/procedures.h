@@ -51,6 +51,7 @@ void spawnMob (uint8_t type, short x, uint8_t y, short z, uint8_t health);
 void interactEntity (int entity_id, int interactor_id);
 void hurtEntity (int entity_id, int attacker_id, uint8_t damage_type, uint8_t damage);
 void tickFarming (uint32_t speed);
+uint8_t mobCanReachPlayer (short mx, uint8_t my, short mz, short px, uint8_t py, short pz);
 uint8_t handleBucketUse (PlayerData *player, float yaw, float pitch);
 void handleServerTick (int64_t time_since_last_tick);
 
