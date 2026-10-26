@@ -57,6 +57,17 @@ The source and development notes describe terrain and biome generation, caves an
 - **Node.js**, Bun, or Deno, for registry conversion
 - A matching **Minecraft Java Edition 1.21.8 server JAR** for generating the registry definitions
 
+## Download development firmware
+
+Every successful `main` branch build now creates a **numbered experimental GitHub pre-release** with a ready-to-download ESP32-S3 flashing ZIP. Each ZIP includes the application firmware, bootloader, partition table, build-derived flashing offsets, integrity checksums, and flashing instructions.
+
+**[Browse releases and download the latest development build](https://github.com/neosmith20/ESP32-S3_Minecraft_Server/releases)**
+
+Development versions use tags such as `v0.1.0-dev.42`. Older versions stay available for comparison and rollback. Only a hardware-verified milestone will be marked as a stable release. Details: [RELEASING.md](RELEASING.md).
+
+> [!CAUTION]
+> Firmware is experimental, and successful CI builds **do not guarantee** successful booting or gameplay on physical hardware. Release ZIPs target the **ESP32-S3 N16R8** configuration. Read the included `FLASHING.md` before flashing, especially if you have existing saved worlds.
+
 ## Getting started
 
 ### 1. Clone the project
