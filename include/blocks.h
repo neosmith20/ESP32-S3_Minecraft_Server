@@ -4,6 +4,12 @@
 #include <stdint.h>
 #include "registries.h"
 
+// The block data files are generated from blocks_config.js and recipes_config.js.
+// If this stops the build, run `node build_registries.js` in the project folder.
+#if !defined(FAM_FARMLAND) || !defined(FAM_CROP)
+  #error "include/registries.h is out of date. Run: node build_registries.js (in the project folder), then delete the .pio folder and build again."
+#endif
+
 // Block state helpers. Blocks are identified by their Minecraft block state
 // ID, which also tells us facing, open/closed, and so on. The generated
 // registries.h describes every supported block (see blocks_config.js).
