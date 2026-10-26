@@ -375,6 +375,41 @@ int main (void) {
   handlePlayerEating(p, false);
   CHECK(p->hunger == 10, "eating bread restores 5 hunger");
 
+  // ---- furnace fuel ----
+  {
+    PlayerData f;
+    #define FURNACE(mat, mc, fuel, fc) memset(&f, 0, sizeof(f)); f.craft_items[0] = mat; f.craft_count[0] = mc; f.craft_items[1] = fuel; f.craft_count[1] = fc;
+    FURNACE(I_porkchop, 16, I_oak_planks, 20) getSmeltingOutput(&f);
+    CHECK(f.craft_items[2] == I_cooked_porkchop && f.craft_count[2] == 16 && f.craft_count[0] == 0, "16 porkchops all cook");
+    CHECK(f.craft_count[1] == 9, "16 porkchops use 11 planks (1.5 items per plank)");
+    FURNACE(I_porkchop, 8, I_coal, 1) getSmeltingOutput(&f);
+    CHECK(f.craft_count[2] == 8 && f.craft_count[1] == 0, "one coal cooks 8 items");
+    FURNACE(I_porkchop, 9, I_coal, 1) getSmeltingOutput(&f);
+    CHECK(f.craft_count[2] == 8 && f.craft_count[0] == 1, "one coal is not enough for 9 items");
+    FURNACE(I_beef, 1, I_oak_planks, 3) getSmeltingOutput(&f);
+    CHECK(f.craft_count[2] == 1 && f.craft_count[1] == 2 && f.craft_count[3] == 1, "one plank cooks one item and keeps the leftover heat");
+    f.craft_items[0] = I_beef; f.craft_count[0] = 1;
+    getSmeltingOutput(&f);
+    CHECK(f.craft_count[2] == 2 && f.craft_count[1] == 1 && f.craft_count[3] == 2, "half an item of heat plus a new plank cooks the next item");
+    f.craft_items[0] = I_beef; f.craft_count[0] = 1;
+    getSmeltingOutput(&f);
+    CHECK(f.craft_count[2] == 3 && f.craft_count[1] == 1, "leftover heat cooks the next item without burning another plank");
+    FURNACE(I_porkchop, 4, I_stick, 10) getSmeltingOutput(&f);
+    CHECK(f.craft_count[2] == 4 && f.craft_count[1] == 2, "4 items take 8 sticks");
+    FURNACE(I_porkchop, 3, 0, 0) getSmeltingOutput(&f);
+    CHECK(f.craft_count[2] == 0, "no fuel, no cooking");
+    FURNACE(I_porkchop, 3, I_dirt, 5) getSmeltingOutput(&f);
+    CHECK(f.craft_count[2] == 0 && f.craft_count[1] == 5, "dirt is not a fuel");
+    FURNACE(I_dirt, 3, I_coal, 5) getSmeltingOutput(&f);
+    CHECK(f.craft_count[2] == 0 && f.craft_count[1] == 5, "dirt can't be smelted and no fuel is wasted");
+    FURNACE(I_sand, 20, I_lava_bucket, 1) getSmeltingOutput(&f);
+    CHECK(f.craft_count[2] == 20 && f.craft_items[1] == I_bucket, "a lava bucket smelts a lot and leaves a bucket");
+    FURNACE(I_raw_iron, 3, I_coal, 1) f.craft_items[2] = I_gold_ingot; f.craft_count[2] = 2; getSmeltingOutput(&f);
+    CHECK(f.craft_count[2] == 2 && f.craft_count[0] == 3, "a different item in the output slot blocks smelting");
+    FURNACE(I_porkchop, 64, I_coal_block, 1) getSmeltingOutput(&f);
+    CHECK(f.craft_count[2] == 64, "a full stack of 64 cooks with one coal block");
+  }
+
   // ---- save/load roundtrip ----
   makeBlockChange(10, 70, 10, B_gold_block);
   makeBlockChange(-11, 71, 12, BMIN_oak_door + OFF_door[2][1][1]);

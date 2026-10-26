@@ -88,78 +88,95 @@ void getCraftingOutput (PlayerData *player, uint8_t *count, uint16_t *item) {
 
 }
 
-#define registerSmeltingRecipe(a, b) \
-  if (*material == a && (*output_item == b || *output_item == 0)) *output_item = b
+
+// How much smelting a fuel item gives, in half items (0 if it isn't a fuel).
+// These match the burn times of the real game.
+static uint8_t getFuelUnits (uint16_t fuel) {
+  switch (fuel) {
+    case I_lava_bucket: return 200;
+    case I_coal_block: return 160;
+    case I_coal: case I_charcoal: return 16;
+    case I_oak_planks: case I_oak_log: case I_oak_wood: case I_crafting_table:
+    case I_chest: case I_ladder: case I_oak_fence: case I_oak_fence_gate:
+    case I_oak_trapdoor: case I_oak_stairs: case I_oak_pressure_plate: return 3;
+    case I_wooden_axe: case I_wooden_pickaxe: case I_wooden_shovel:
+    case I_wooden_sword: case I_wooden_hoe: case I_oak_door: return 2;
+    case I_stick: case I_oak_sapling: case I_oak_button: return 1;
+    default: return 0;
+  }
+}
 
 void getSmeltingOutput (PlayerData *player) {
 
   uint8_t *material_count = &player->craft_count[0];
   uint8_t *fuel_count = &player->craft_count[1];
 
-  // Don't process if we're missing material or fuel
-  if (*material_count == 0 || *fuel_count == 0) return;
-
   uint16_t *material = &player->craft_items[0];
   uint16_t *fuel = &player->craft_items[1];
 
-  // Don't process if we're missing material or fuel
-  if (*material == 0 || *fuel == 0) return;
+  // Don't process without material, or without fuel (heat left over from
+  // earlier fuel still counts)
+  if (*material_count == 0 || *material == 0) return;
+  if ((*fuel_count == 0 || *fuel == 0) && player->craft_count[3] < 2) return;
 
   // Furnace output is 3rd crafting table slot
   uint8_t *output_count = &player->craft_count[2];
   uint16_t *output_item = &player->craft_items[2];
 
-  // Determine fuel efficiency based on the type of item
-  // Since we can't represent fractions, some items use a random component
-  // to represent the fractional part. In some cases (e.g. sticks), this
-  // can lead to a fuel_value of 0, which means that the fuel gets consumed
-  // without processing any materials.
-  uint8_t fuel_value = 0;
-  if (*fuel == I_coal) fuel_value = 8;
-  else if (*fuel == I_charcoal) fuel_value = 8;
-  else if (*fuel == I_coal_block) fuel_value = 80;
-  else if (*fuel == I_oak_planks) fuel_value = 1 + (fast_rand() & 1);
-  else if (*fuel == I_oak_log) fuel_value = 1 + (fast_rand() & 1);
-  else if (*fuel == I_crafting_table) fuel_value = 1 + (fast_rand() & 1);
-  else if (*fuel == I_stick) fuel_value = (fast_rand() & 1);
-  else if (*fuel == I_oak_sapling) fuel_value = (fast_rand() & 1);
-  else if (*fuel == I_wooden_axe) fuel_value = 1;
-  else if (*fuel == I_wooden_pickaxe) fuel_value = 1;
-  else if (*fuel == I_wooden_shovel) fuel_value = 1;
-  else if (*fuel == I_wooden_sword) fuel_value = 1;
-  else if (*fuel == I_wooden_hoe) fuel_value = 1;
+  // Work out which smelting recipe applies (without changing anything yet)
+  uint16_t result = 0;
+  if (*material == I_cobblestone) result = I_stone;
+  else if (*material == I_oak_log) result = I_charcoal;
+  else if (*material == I_oak_wood) result = I_charcoal;
+  else if (*material == I_raw_iron) result = I_iron_ingot;
+  else if (*material == I_raw_gold) result = I_gold_ingot;
+  else if (*material == I_sand) result = I_glass;
+  else if (*material == I_raw_copper) result = I_copper_ingot;
+  else if (*material == I_stone) result = I_smooth_stone;
+  else if (*material == I_sandstone) result = I_smooth_sandstone;
+  else if (*material == I_stone_bricks) result = I_cracked_stone_bricks;
+  else if (*material == I_chicken) result = I_cooked_chicken;
+  else if (*material == I_beef) result = I_cooked_beef;
+  else if (*material == I_porkchop) result = I_cooked_porkchop;
+  else if (*material == I_mutton) result = I_cooked_mutton;
+  else if (*material == I_potato) result = I_baked_potato;
   else return;
+  if (*output_item != 0 && *output_item != result) return;
 
-  uint8_t exchange = *material_count > fuel_value ? fuel_value : *material_count;
+  // Fuel is measured in half items: smelting one item takes 2 units, and
+  // whatever is left over from the last fuel item carries over to the next
+  // item, like the burn time of a real furnace. The leftover is kept in the
+  // (otherwise unused) fourth crafting slot's count.
+  uint8_t *leftover = &player->craft_count[3];
 
-  registerSmeltingRecipe(I_cobblestone, I_stone);
-  else registerSmeltingRecipe(I_oak_log, I_charcoal);
-  else registerSmeltingRecipe(I_oak_wood, I_charcoal);
-  else registerSmeltingRecipe(I_raw_iron, I_iron_ingot);
-  else registerSmeltingRecipe(I_raw_gold, I_gold_ingot);
-  else registerSmeltingRecipe(I_sand, I_glass);
-  else registerSmeltingRecipe(I_raw_copper, I_copper_ingot);
-  else registerSmeltingRecipe(I_stone, I_smooth_stone);
-  else registerSmeltingRecipe(I_sandstone, I_smooth_sandstone);
-  else registerSmeltingRecipe(I_stone_bricks, I_cracked_stone_bricks);
-  else registerSmeltingRecipe(I_chicken, I_cooked_chicken);
-  else registerSmeltingRecipe(I_beef, I_cooked_beef);
-  else registerSmeltingRecipe(I_porkchop, I_cooked_porkchop);
-  else registerSmeltingRecipe(I_mutton, I_cooked_mutton);
-  else registerSmeltingRecipe(I_potato, I_baked_potato);
-  else return;
+  while (*material_count > 0 && *output_count < 64) {
 
-  *output_count += exchange;
-  *material_count -= exchange;
+    if (*leftover < 2) {
+      // Burn another fuel item
+      if (*fuel == 0 || *fuel_count == 0) break;
+      uint8_t fuel_units = getFuelUnits(*fuel);
+      if (fuel_units == 0) break;
+      *leftover += fuel_units;
+      // A lava bucket leaves an empty bucket behind
+      if (*fuel == I_lava_bucket) {
+        *fuel = I_bucket;
+      } else {
+        *fuel_count -= 1;
+        if (*fuel_count == 0) *fuel = 0;
+      }
+      continue;
+    }
 
-  *fuel_count -= 1;
-  if (*fuel_count == 0) *fuel = 0;
+    uint8_t n = *leftover / 2;
+    if (n > *material_count) n = *material_count;
+    if (n > 64 - *output_count) n = 64 - *output_count;
+    *output_item = result;
+    *output_count += n;
+    *material_count -= n;
+    *leftover -= 2 * n;
 
-  if (*material_count <= 0) {
-    *material_count = 0;
-    *material = 0;
-  } else return getSmeltingOutput(player);
+  }
 
-  return;
+  if (*material_count == 0) *material = 0;
 
 }
