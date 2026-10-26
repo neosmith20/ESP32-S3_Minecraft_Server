@@ -8,6 +8,8 @@
   void writeBlockChangesToDisk (int from, int to);
   void markBlockChangesDirty (int from, int to);
   int flushDirtyBlockPages (int max_pages);
+  void flushBlockJournal (void);
+  void resetBlockJournal (void);
   void writeChestChangesToDisk (uint8_t *storage_ptr, uint8_t slot);
   void writePlayerDataToDisk ();
   void writeDataToDiskOnInterval ();
@@ -17,6 +19,8 @@
   #define writeBlockChangesToDisk(a, b)
   #define markBlockChangesDirty(a, b)
   #define flushDirtyBlockPages(a) 0
+  #define flushBlockJournal()
+  #define resetBlockJournal()
   #define writeChestChangesToDisk(a, b)
   #define writePlayerDataToDisk()
   #define writeDataToDiskOnInterval()

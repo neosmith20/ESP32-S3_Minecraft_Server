@@ -23,7 +23,7 @@ static int fileMatchesMemory (void) {
 }
 
 int main (void) {
-  remove("world2.bin");
+  remove("world2.bin"); remove("journal.bin");
   for (int i = 0; i < MAX_BLOCK_CHANGES; i ++) block_changes[i].block = BLOCK_NONE;
   block_changes_count = 0;
   for (int i = 0; i < MAX_PLAYERS; i ++) { client_states[i * 2] = -1; player_data[i].client_fd = -1; }
@@ -44,18 +44,53 @@ int main (void) {
   // Later changes, including removing a block
   makeBlockChange(3, 71, -497, B_air);
   makeBlockChange(5000, 80, 5000, B_diamond_block);
-  CHECK(flushDirtyBlockPages(1000) >= 1, "new changes are written");
+  CHECK(flushDirtyBlockPages(1000) >= 1, "full save writes new changes");
   CHECK(fileMatchesMemory(), "file matches again after more changes");
 
-  // Reload as the server would after a restart
+  // Journal: quick saves of recent changes, no rewrite of the world file
+  makeBlockChange(7000, 66, 7000, B_gold_block);
+  makeBlockChange(7001, 66, 7000, B_torch);
+  makeBlockChange(7000, 66, 7000, B_air);
+  flushBlockJournal();
+  CHECK(!fileMatchesMemory(), "journal save does not touch the world file");
+  FILE *jf = fopen("journal.bin", "rb");
+  long jsize = 0;
+  if (jf) { fseek(jf, 0, SEEK_END); jsize = ftell(jf); fclose(jf); }
+  CHECK(jsize > 0 && jsize < 200, "journal is tiny (only a few bytes per change)");
+  makeBlockChange(7002, 66, 7000, B_stone);
+  flushBlockJournal();
+
+  // Simulate a restart without a full save: the journal must restore everything
   static BlockChange before[MAX_BLOCK_CHANGES];
   memcpy(before, block_changes, sizeof(before));
   for (int i = 0; i < MAX_BLOCK_CHANGES; i ++) block_changes[i].block = BLOCK_NONE;
   block_changes_count = 0;
-  CHECK(initSerializer() == 0, "world file loads");
-  CHECK(memcmp(before, block_changes, sizeof(before)) == 0, "world after restart equals the world before");
+  CHECK(initSerializer() == 0, "world file loads with a journal");
+  CHECK(memcmp(before, block_changes, sizeof(before)) == 0, "journal restores the world exactly");
   rebuildBlockChangeIndex();
-  CHECK(getBlockAt(5000, 80, 5000) == B_diamond_block, "a block placed just before the restart is still there");
+  CHECK(getBlockAt(7001, 66, 7000) == B_torch, "block saved only in the journal is back");
+  CHECK(getBlockAt(7000, 66, 7000) != B_gold_block, "a block removed after being placed stays removed");
+  CHECK(getBlockAt(5000, 80, 5000) == B_diamond_block, "block from the full save is still there");
+
+  // Full save merges the journal and removes it
+  CHECK(flushDirtyBlockPages(1000) >= 1, "journal contents are merged into the world file");
+  CHECK(fileMatchesMemory(), "world file now holds everything");
+  CHECK(fopen("journal.bin", "rb") == NULL, "journal removed after merge");
+
+  // Torn last record (power loss while writing) is ignored
+  makeBlockChange(8000, 66, 8000, B_gold_block);
+  flushBlockJournal();
+  jf = fopen("journal.bin", "ab"); fwrite("abc", 1, 3, jf); fclose(jf);
+  for (int i = 0; i < MAX_BLOCK_CHANGES; i ++) block_changes[i].block = BLOCK_NONE;
+  block_changes_count = 0;
+  CHECK(initSerializer() == 0, "loads with a damaged journal end");
+  rebuildBlockChangeIndex();
+  CHECK(getBlockAt(8000, 66, 8000) == B_gold_block, "complete records before the damage are kept");
+
+  // Many changes at once fall back to a full save instead of losing anything
+  for (int i = 0; i < 1500; i ++) makeBlockChange(i, 100, 3000, B_stone);
+  flushBlockJournal();
+  CHECK(fileMatchesMemory(), "overflow triggers a full save");
 
   printf("\n%s (%d failures)\n", fails ? "SOME TESTS FAILED" : "ALL SAVE TESTS PASSED", fails);
   return fails != 0;

@@ -230,7 +230,8 @@ void disconnectClient (int *client_fd, int cause) {
   handlePlayerDisconnect(*client_fd);
   #ifdef DISK_SYNC_BLOCKS_ON_INTERVAL
     // Someone leaving is a good moment to save what has been built so far
-    if (was_playing) flushDirtyBlockPages(1 << 30);
+    // (a quick journal write; the full save happens when the server is empty)
+    if (was_playing) flushBlockJournal();
   #endif
   #ifdef _WIN32
   closesocket(*client_fd);
@@ -2596,9 +2597,7 @@ void broadcastChestUpdate (int origin_fd, uint8_t *storage_ptr, uint16_t item, u
     sc_setContainerSlot(player_data[i].client_fd, 2, slot, count, item);
   }
 
-  #ifndef DISK_SYNC_BLOCKS_ON_INTERVAL
   writeChestChangesToDisk(storage_ptr, slot);
-  #endif
 
 }
 #endif

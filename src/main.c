@@ -743,6 +743,7 @@ int main () {
       rebuildBlockChangeIndex();
       // Update data on disk
       writeBlockChangesToDisk(0, block_changes_count);
+      resetBlockJournal();
       writePlayerDataToDisk();
       // Kick the client
       disconnectClient(&clients[client_index], 7);

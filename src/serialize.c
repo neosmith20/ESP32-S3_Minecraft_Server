@@ -8,9 +8,11 @@
   #include "esp_littlefs.h"
   #define FILE_PATH "/littlefs/world2.bin"
   #define OLD_FILE_PATH "/littlefs/world.bin"
+  #define JOURNAL_PATH "/littlefs/journal.bin"
 #else
   #include <stdio.h>
   #define FILE_PATH "world2.bin"
+  #define JOURNAL_PATH "journal.bin"
 #endif
 
 #include "tools.h"
@@ -18,6 +20,11 @@
 #include "serialize.h"
 
 int64_t last_disk_sync_time = 0;
+
+#ifdef DISK_SYNC_BLOCKS_ON_INTERVAL
+static void markPagesDirty (int from, int to);
+static int replayBlockJournal (void);
+#endif
 
 // Restores world data from disk, or writes world file if it doesn't exist
 int initSerializer () {
@@ -59,6 +66,7 @@ int initSerializer () {
         file_size, (unsigned)(sizeof(block_changes) + sizeof(player_data)));
       fclose(file);
       remove(FILE_PATH);
+      remove(JOURNAL_PATH);
       file = NULL;
     }
   }
@@ -71,6 +79,11 @@ int initSerializer () {
       fclose(file);
       return 1;
     }
+    #ifdef DISK_SYNC_BLOCKS_ON_INTERVAL
+    // Apply the changes saved in the journal after the world file was last written
+    int replayed = replayBlockJournal();
+    if (replayed > 0) printf("Restored %d recent block changes from the journal.\n", replayed);
+    #endif
     // Find the index of the last occupied entry to recover block_changes_count
     for (int i = 0; i < MAX_BLOCK_CHANGES; i ++) {
       if (block_changes[i].block == BLOCK_NONE) continue;
@@ -170,18 +183,33 @@ void writeBlockChangesToDisk (int from, int to) {
   fclose(file);
 }
 
-// Remembers which parts of the block change list need to be written to flash
-// (see DISK_SYNC_BLOCKS_ON_INTERVAL). The list is split into 4 KB pages, the
-// size of a flash sector, and only pages with changes get written.
+// Saving block changes without freezing the server
+//
+// Rewriting a page in the middle of the world file makes flash erase and
+// rewrite a lot, which freezes the server. So building is saved the cheap
+// way: changes are collected in memory and, every few seconds, added to the
+// end of a small "journal" file (a few bytes per change, quick). The journal
+// is merged into the big world file only at quiet times: when the last
+// player leaves, or on the long backup interval. When the server starts, the
+// journal is applied on top of the world file, so nothing is lost.
 #define SAVE_PAGE_BYTES 4096
 #define SAVE_PAGES ((sizeof(block_changes) + SAVE_PAGE_BYTES - 1) / SAVE_PAGE_BYTES)
 static uint8_t dirty_pages[(SAVE_PAGES + 7) / 8];
 static int dirty_count = 0;
 
-void markBlockChangesDirty (int from, int to) {
-  if (from < 0) from = 0;
-  if (to >= MAX_BLOCK_CHANGES) to = MAX_BLOCK_CHANGES - 1;
-  if (to < from) return;
+#define JOURNAL_PENDING_MAX 1024
+#define JOURNAL_MAX_RECORDS 20000
+typedef struct __attribute__((packed)) {
+  uint32_t index;
+  BlockChange change;
+} JournalRecord;
+
+static uint32_t journal_pending[JOURNAL_PENDING_MAX];
+static int journal_pending_count = 0;
+static uint8_t journal_overflow = 0;
+static uint32_t journal_records_on_disk = 0;
+
+static void markPagesDirty (int from, int to) {
   size_t first = ((size_t)from * sizeof(BlockChange)) / SAVE_PAGE_BYTES;
   size_t last = (((size_t)to + 1) * sizeof(BlockChange) - 1) / SAVE_PAGE_BYTES;
   for (size_t pg = first; pg <= last && pg < SAVE_PAGES; pg ++) {
@@ -191,8 +219,36 @@ void markBlockChangesDirty (int from, int to) {
   }
 }
 
-// Writes up to `max_pages` changed pages of the block change list to flash.
-// Returns how many pages were written.
+void markBlockChangesDirty (int from, int to) {
+  if (from < 0) from = 0;
+  if (to >= MAX_BLOCK_CHANGES) to = MAX_BLOCK_CHANGES - 1;
+  if (to < from) return;
+  markPagesDirty(from, to);
+  for (int i = from; i <= to; i ++) {
+    // Same entry changed again right away: one record is enough
+    if (journal_pending_count > 0 && journal_pending[journal_pending_count - 1] == (uint32_t)i) continue;
+    if (journal_pending_count >= JOURNAL_PENDING_MAX) { journal_overflow = 1; return; }
+    journal_pending[journal_pending_count ++] = i;
+  }
+}
+
+// Forgets everything saved in the journal (used once its content is in the world file)
+static void clearBlockJournal (void) {
+  remove(JOURNAL_PATH);
+  journal_records_on_disk = 0;
+  journal_pending_count = 0;
+  journal_overflow = 0;
+}
+
+void resetBlockJournal (void) {
+  clearBlockJournal();
+  memset(dirty_pages, 0, sizeof(dirty_pages));
+  dirty_count = 0;
+}
+
+// Writes up to `max_pages` changed pages of the block change list to the world
+// file (the slow, full save). Returns how many pages were written. Once every
+// page is saved, the journal is no longer needed and is removed.
 int flushDirtyBlockPages (int max_pages) {
 
   if (dirty_count == 0 || max_pages <= 0) return 0;
@@ -204,9 +260,10 @@ int flushDirtyBlockPages (int max_pages) {
   }
 
   static size_t next_page = 0;
+  size_t start_page = next_page;
   int written_pages = 0;
   for (size_t n = 0; n < SAVE_PAGES && written_pages < max_pages; n ++) {
-    size_t pg = (next_page + n) % SAVE_PAGES;
+    size_t pg = (start_page + n) % SAVE_PAGES;
     if (!(dirty_pages[pg >> 3] & (1 << (pg & 7)))) continue;
     size_t offset = pg * SAVE_PAGE_BYTES;
     size_t length = sizeof(block_changes) - offset;
@@ -223,7 +280,64 @@ int flushDirtyBlockPages (int max_pages) {
   }
 
   fclose(file);
+  if (dirty_count == 0) clearBlockJournal();
   return written_pages;
+
+}
+
+// Adds the changes made since the last call to the end of the journal file.
+// Quick, because only a few bytes are written. Called every few seconds.
+void flushBlockJournal (void) {
+
+  if (journal_pending_count == 0 && !journal_overflow) return;
+
+  // Too many changes at once, or a journal that has grown big: do the full save
+  if (journal_overflow || journal_records_on_disk + journal_pending_count > JOURNAL_MAX_RECORDS) {
+    flushDirtyBlockPages(1 << 30);
+    return;
+  }
+
+  FILE *file = fopen(JOURNAL_PATH, "ab");
+  if (!file) {
+    perror("Failed to open the journal file. Changes will be saved with the next full save");
+    journal_pending_count = 0;
+    return;
+  }
+  // Write all records in one go
+  static JournalRecord batch[JOURNAL_PENDING_MAX];
+  for (int i = 0; i < journal_pending_count; i ++) {
+    batch[i].index = journal_pending[i];
+    batch[i].change = block_changes[journal_pending[i]];
+  }
+  size_t count = journal_pending_count;
+  if (fwrite(batch, sizeof(JournalRecord), count, file) == count) {
+    journal_records_on_disk += count;
+  } else {
+    perror("Failed to write to the journal file");
+  }
+  fclose(file);
+  journal_pending_count = 0;
+
+}
+
+// Applies the journal on top of the freshly loaded world file.
+// Returns the number of changes restored.
+static int replayBlockJournal (void) {
+
+  FILE *file = fopen(JOURNAL_PATH, "rb");
+  if (!file) return 0;
+  JournalRecord rec;
+  int restored = 0;
+  // A record cut short by a power loss is simply ignored
+  while (fread(&rec, sizeof(rec), 1, file) == 1) {
+    if (rec.index >= MAX_BLOCK_CHANGES) continue;
+    block_changes[rec.index] = rec.change;
+    markPagesDirty(rec.index, rec.index);
+    restored ++;
+  }
+  fclose(file);
+  journal_records_on_disk = restored;
+  return restored;
 
 }
 
@@ -280,12 +394,12 @@ void writeDataToDiskOnInterval () {
   int64_t now = get_program_time();
 
   #ifdef DISK_SYNC_BLOCKS_ON_INTERVAL
-  // Block changes are saved a couple of pages at a time every few seconds,
-  // so a restart loses at most a few seconds of building
+  // Building is added to the small journal file every few seconds, so a
+  // restart loses at most that much work. This only writes a few bytes.
   static int64_t last_block_sync_time = 0;
-  if (dirty_count != 0 && now - last_block_sync_time >= BLOCK_SYNC_INTERVAL) {
+  if (now - last_block_sync_time >= BLOCK_SYNC_INTERVAL) {
     last_block_sync_time = now;
-    flushDirtyBlockPages(BLOCK_SYNC_PAGES);
+    flushBlockJournal();
   }
   #endif
 
@@ -324,7 +438,11 @@ void writeChestChangesToDisk (uint8_t *storage_ptr, uint8_t slot) {
    * entry encodes exactly 2 slots.
    */
   int index = (int)(storage_ptr - (uint8_t *)block_changes) / sizeof(BlockChange) + slot / 2;
+  #ifdef DISK_SYNC_BLOCKS_ON_INTERVAL
+  markBlockChangesDirty(index, index);
+  #else
   writeBlockChangesToDisk(index, index);
+  #endif
 }
 #endif
 

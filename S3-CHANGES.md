@@ -111,8 +111,11 @@ Files: `include/globals.h`, `src/serialize.c`, `include/serialize.h`, `src/globa
 * **60000 player block changes instead of 20000** when PSRAM is set up as in
   `sdkconfig.defaults` (the arrays live in PSRAM).
 * **World saves to flash** (LittleFS, `littlefs` partition in `partitions.csv`).
-  Changes are collected and written every 15 seconds, and only the range of
-  entries that changed is written. The original wrote every entry separately
+  Building and mining are added to a small journal file (`journal.bin`) every
+  15 seconds: only a few bytes per change, so the server does not stall. The
+  journal is merged into the big world file when the last player leaves and
+  on the 30-minute backup, and is applied again on startup, so a restart or
+  power loss loses at most about 15 seconds of building. The original wrote every entry separately
   and could read one entry past the end of the array when the world was full;
   that is fixed.
 * The save file is about 360 KB. **If you change `MAX_BLOCK_CHANGES` after the

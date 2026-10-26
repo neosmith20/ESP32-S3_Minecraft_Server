@@ -140,11 +140,11 @@
   #define DISK_SYNC_INTERVAL 15000000
 #endif
 
-// When block changes are synced on an interval, building and mining are saved
-// every 5 seconds, up to 2 pages of 4 KB at a time. A page write briefly
-// pauses the server.
-#define BLOCK_SYNC_INTERVAL 5000000
-#define BLOCK_SYNC_PAGES 2
+// When block changes are synced on an interval, building and mining are added
+// to a small journal file every 15 seconds (only a few bytes, so it is quick).
+// The journal is merged into the world file when the last player leaves and
+// on the long backup interval.
+#define BLOCK_SYNC_INTERVAL 15000000
 
 // Whether to sync block changes to disk on an interval, instead of syncing
 // on each change. On systems with fast random disk access, this shouldn't
