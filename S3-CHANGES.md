@@ -186,3 +186,19 @@ client (`e2e_client.py`) and the placeholder-data generator
 (`make_stub_registries.py`). Run the generator on this folder to create stub
 registry files outside the project, compile everything in `src/` (minus
 `main.c` for `test_chunks.c`) against them, and run.
+
+### Ore veins and cave pockets
+Files: `src/worldgen.c`
+
+* Ores now come in **veins** (small irregular clusters) instead of one block per
+  column. Coal appears at any depth, iron and copper below y 56, gold below
+  y 32, redstone and diamond below y 16. Amounts per 16x16 chunk are close to
+  the real game (roughly 260 coal, 120 iron, 70 copper, 12 gold, 20 redstone,
+  8 diamond).
+* The random single cobblestone blocks that used to appear in the stone are gone.
+* Small **cave pockets** appear underground (they join up when next to each
+  other), and lava pockets appear near the bottom of the world.
+* Each vein is worked out from its own 8x8x8 cell, so generating terrain is
+  just as cheap as before and the same world always comes out the same.
+  Existing saves keep what players built, but the underground changes to the
+  new layout in areas that have not been visited yet (and anywhere nothing was built).

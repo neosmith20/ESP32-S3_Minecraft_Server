@@ -175,6 +175,16 @@ uint8_t getHeightAt (int x, int z) {
 
 }
 
+// Mixes bits of a number into a well spread hash (used for ore veins and caves)
+static inline uint32_t mixHash (uint32_t a) {
+  a ^= a >> 16;
+  a *= 0x7feb352dU;
+  a ^= a >> 15;
+  a *= 0x846ca68bU;
+  a ^= a >> 16;
+  return a;
+}
+
 uint16_t getTerrainAtFromCache (int x, int y, int z, int rx, int rz, ChunkAnchor anchor, ChunkFeature feature, uint8_t height) {
 
   if (y >= 64 && y >= height && feature.y != 255) switch (anchor.biome) {
@@ -272,38 +282,52 @@ uint16_t getTerrainAtFromCache (int x, int y, int z, int rx, int rz, ChunkAnchor
     int8_t gap = height - TERRAIN_BASE_HEIGHT;
     if (y < CAVE_BASE_DEPTH + gap && y > CAVE_BASE_DEPTH - gap) return B_air;
 
-    // The chunk-relative X and Z coordinates are used as the seed for an
-    // xorshift RNG/hash function to generate the Y coordinate of the ore
-    // in this column. This way, each column is guaranteed to have exactly
-    // one ore candidate, as there will always be a Y value to reference.
-    uint8_t ore_y = ((rx & 15) << 4) + (rz & 15);
-    ore_y ^= ore_y << 4;
-    ore_y ^= ore_y >> 5;
-    ore_y ^= ore_y << 1;
-    ore_y &= 63;
+    // Ore veins and cave pockets. The world is split into cells of one
+    // minichunk (8x8 blocks) by 8 blocks of height. Each cell is rolled once
+    // (from the minichunk hash and the cell height) to decide whether it holds
+    // a vein, a cave pocket or nothing. A vein is a small irregular blob that
+    // stays inside its cell, so any block can be answered from its own cell
+    // alone, with no need to look at neighbours.
+    uint8_t cell_y = y >> 3;
+    uint32_t cell = mixHash(anchor.hash ^ ((uint32_t)(cell_y + 1) * 0x9E3779B1u));
+    uint8_t roll = cell & 255;
+    uint8_t kind = 0;
+    if (roll < 45) kind = 1; // coal, at any depth
+    else if (roll < 95) { if (cell_y <= 6) kind = 2; } // iron, below y 56
+    else if (roll < 115) { if (cell_y <= 6) kind = 3; } // copper, below y 56
+    else if (roll < 125) { if (cell_y <= 3) kind = 4; } // gold, below y 32
+    else if (roll < 150) { if (cell_y <= 1) kind = 5; } // redstone, below y 16
+    else if (roll < 165) { if (cell_y <= 1) kind = 6; } // diamond, below y 16
+    else if (roll < 182) { if (cell_y >= 1) kind = 7; } // cave pocket
+    else if (roll < 190) { if (cell_y == 0) kind = 8; } // lava pocket, deep down
 
-    if (y == ore_y) {
-      // Since the ore Y coordinate is effectely a random number in range [0;64),
-      // we use it in a bit shift with the chunk's anchor hash to get another
-      // pseudo-random number for the ore's rarity.
-      uint8_t ore_probability = (anchor.hash >> (ore_y % 24)) & 255;
-      // Ore placement is determined by Y level and "probability"
-      if (y < 15) {
-        if (ore_probability < 10) return B_diamond_ore;
-        if (ore_probability < 12) return B_gold_ore;
-        if (ore_probability < 15) return B_redstone_ore;
+    if (kind != 0) {
+      // Where the blob is centred inside the cell (always 2 to 5, so that a
+      // blob of radius 2 never leaves the cell)
+      int cx = 2 + ((cell >> 8) & 3);
+      int cy = 2 + ((cell >> 10) & 3);
+      int cz = 2 + ((cell >> 12) & 3);
+      int dx = rx - cx, dy = (y & 7) - cy, dz = rz - cz;
+      // Caves are wider than they are tall
+      int d2 = dx * dx + dz * dz + dy * dy * (kind == 7 ? 2 : 1);
+      // How big each kind of blob is (squared radius)
+      static const uint8_t blob_size[9] = {0, 5, 3, 4, 3, 3, 2, 9, 6};
+      if (d2 <= blob_size[kind] + 2) {
+        // Roughen the edge of the blob a little, differently for every block
+        uint8_t rough = (mixHash(cell ^ (uint32_t)x * 73856093u ^ (uint32_t)z * 19349663u ^ (uint32_t)y * 83492791u) >> 9) % 3;
+        if (d2 + rough <= blob_size[kind] + 1) {
+          switch (kind) {
+            case 1: return B_coal_ore;
+            case 2: return B_iron_ore;
+            case 3: return B_copper_ore;
+            case 4: return B_gold_ore;
+            case 5: return B_redstone_ore;
+            case 6: return B_diamond_ore;
+            case 7: return B_air;
+            case 8: if (y < 5) return B_lava; break;
+          }
+        }
       }
-      if (y < 30) {
-        if (ore_probability < 3) return B_gold_ore;
-        if (ore_probability < 8) return B_redstone_ore;
-      }
-      if (y < 54) {
-        if (ore_probability < 30) return B_iron_ore;
-        if (ore_probability < 40) return B_copper_ore;
-      }
-      if (ore_probability < 60) return B_coal_ore;
-      if (y < 5) return B_lava;
-      return B_cobblestone;
     }
 
     // For everything else, fall back to stone
