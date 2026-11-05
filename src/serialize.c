@@ -1,3 +1,4 @@
+#include <string.h>
 #include "globals.h"
 
 #ifdef SYNC_WORLD_TO_DISK
