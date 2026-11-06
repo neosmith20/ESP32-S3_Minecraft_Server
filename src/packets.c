@@ -58,7 +58,9 @@ int cs_handshake (int client_fd) {
   printf("  Server address: %s\n", recv_buffer);
   printf("  Server port: %u\n", readUint16(client_fd));
   int intent = readVarInt(client_fd);
-  if (intent == VARNUM_ERROR) return 1;
+  // Only status (1), login (2) and transfer (3) may be requested. Anything else
+  // (like 5) would let a client skip login and pretend to be in the game.
+  if (intent < 1 || intent > 3) return 1;
   printf("  Intent: %d\n\n", intent);
   setClientState(client_fd, intent);
 
@@ -73,6 +75,14 @@ int cs_loginStart (int client_fd, uint8_t *uuid, char *name) {
   if (recv_count == -1) return 1;
   strncpy(name, (char *)recv_buffer, 16 - 1);
   name[16 - 1] = '\0';
+  // Only plain letters, digits and underscores: names end up in chat
+  // messages and death messages, and must not contain control characters
+  for (int i = 0; name[i] != '\0'; i ++) {
+    char c = name[i];
+    uint8_t ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_';
+    if (!ok) name[i] = '_';
+  }
+  if (name[0] == '\0') strcpy(name, "Player");
   printf("  Player name: %s\n", name);
   recv_count = recv_all(client_fd, recv_buffer, 16, false);
   if (recv_count == -1) return 1;
@@ -280,7 +290,7 @@ int sc_setDefaultSpawnPosition (int client_fd, int64_t x, int64_t y, int64_t z) 
   writeVarInt(client_fd, sizeVarInt(0x5A) + 12);
   writeVarInt(client_fd, 0x5A);
 
-  writeUint64(client_fd, ((x & 0x3FFFFFF) << 38) | ((z & 0x3FFFFFF) << 12) | (y & 0xFFF));
+  writeUint64(client_fd, (((uint64_t)x & 0x3FFFFFF) << 38) | (((uint64_t)z & 0x3FFFFFF) << 12) | ((uint64_t)y & 0xFFF));
   writeFloat(client_fd, 0);
 
   return 0;
@@ -602,7 +612,7 @@ int sc_setContainerProperty (int client_fd, uint8_t window_id, int16_t property,
 int sc_blockUpdate (int client_fd, int64_t x, int64_t y, int64_t z, uint16_t block) {
   writeVarInt(client_fd, 9 + sizeVarInt(block));
   writeByte(client_fd, 0x08);
-  writeUint64(client_fd, ((x & 0x3FFFFFF) << 38) | ((z & 0x3FFFFFF) << 12) | (y & 0xFFF));
+  writeUint64(client_fd, (((uint64_t)x & 0x3FFFFFF) << 38) | (((uint64_t)z & 0x3FFFFFF) << 12) | ((uint64_t)y & 0xFFF));
   writeVarInt(client_fd, block);
   return 0;
 }
@@ -622,8 +632,8 @@ int cs_playerAction (int client_fd) {
 
   int64_t pos = readInt64(client_fd);
   int x = pos >> 38;
-  int y = pos << 52 >> 52;
-  int z = pos << 26 >> 38;
+  int y = (int64_t)((uint64_t)pos << 52) >> 52;
+  int z = (int64_t)((uint64_t)pos << 26) >> 38;
 
   readByte(client_fd); // ignore face
 
@@ -632,6 +642,15 @@ int cs_playerAction (int client_fd) {
 
   PlayerData *player;
   if (getPlayerData(client_fd, &player)) return 1;
+
+  // Only mining/placing actions have a block target worth checking.
+  // Block actions far away from the player are ignored, and the client is
+  // shown the real block again so it does not keep a ghost change.
+  if ((action == 0 || action == 2) && !isBlockInReach(player, x, y, z)) {
+    if (y >= 0 && y <= 255 && x >= -32768 && x <= 32767 && z >= -32768 && z <= 32767)
+      sc_blockUpdate(client_fd, x, y, z, getBlockAt(x, y, z));
+    return 0;
+  }
 
   handlePlayerAction(player, action, x, y, z);
 
@@ -682,8 +701,8 @@ int cs_useItemOn (int client_fd) {
 
   int64_t pos = readInt64(client_fd);
   int x = pos >> 38;
-  int y = pos << 52 >> 52;
-  int z = pos << 26 >> 38;
+  int y = (int64_t)((uint64_t)pos << 52) >> 52;
+  int z = (int64_t)((uint64_t)pos << 26) >> 38;
 
   uint8_t face = readByte(client_fd);
 
@@ -705,6 +724,8 @@ int cs_useItemOn (int client_fd) {
   PlayerData *player;
   if (getPlayerData(client_fd, &player)) return 1;
 
+  if (!isBlockInReach(player, x, y, z)) return 0;
+
   handlePlayerUseItem(player, x, y, z, face, cursor_y);
 
   return 0;
@@ -722,6 +743,9 @@ int cs_clickContainer (int client_fd) {
   uint8_t mode = readVarInt(client_fd);
 
   int changes_count = readVarInt(client_fd);
+  // A real client sends at most one entry per slot. Anything else is broken
+  // or hostile, and a huge count would keep the server busy reading.
+  if (changes_count < 0 || changes_count > 64) return 1;
 
   PlayerData *player;
   if (getPlayerData(client_fd, &player)) return 1;
@@ -739,7 +763,7 @@ int cs_clickContainer (int client_fd) {
       givePlayerItem(player, player->flagval_16, player->flagval_8);
       player->flagval_16 = 0;
       player->flagval_8 = 0;
-    } else {
+    } else if (player->flagval_8 > 0) {
       givePlayerItem(player, player->flagval_16, 1);
       player->flagval_8 -= 1;
       if (player->flagval_8 == 0) player->flagval_16 = 0;
@@ -762,27 +786,47 @@ int cs_clickContainer (int client_fd) {
 
   for (int i = 0; i < changes_count; i ++) {
 
-    slot = clientSlotToServerSlot(window_id, readUint16(client_fd));
-    // slots outside of the inventory overflow into the crafting buffer
-    if (slot > 40 && apply_changes) craft = true;
+    uint16_t client_slot = readUint16(client_fd);
+    slot = client_slot > 255 ? 255 : clientSlotToServerSlot(window_id, client_slot);
 
+    // Work out where this slot lives. Anything that does not map to a real
+    // slot is skipped (but its data is still read so the stream stays in sync).
+    uint8_t slot_ok = slot != 255;
     #ifdef ALLOW_CHESTS
-    if (window_id == 2 && slot > 40) {
-      // Get item pointers from the player's storage pointer
-      // See the handlePlayerUseItem function for more info on this hack
-      p_item = (uint16_t *)(storage_ptr + (slot - 41) * 3);
-      p_count = storage_ptr + (slot - 41) * 3 + 2;
+    if (window_id == 2) {
+      // Chest slots only exist while a chest is open (storage pointer valid)
+      if (slot > 40 && (!(player->flags & 0x80) || storage_ptr == NULL)) slot_ok = false;
     } else
     #endif
     {
-      // Prevent accessing crafting-related slots when craft_items is locked
-      if (slot > 40 && player->flags & 0x80) return 1;
-      p_item = &player->inventory_items[slot];
-      p_count = &player->inventory_count[slot];
+      // Only the crafting grid (slots 41-49) may overflow past the inventory
+      if (slot > 49) slot_ok = false;
+    }
+
+    // slots outside of the inventory overflow into the crafting buffer
+    if (slot_ok && slot > 40 && apply_changes) craft = true;
+
+    p_item = NULL;
+    p_count = NULL;
+    if (slot_ok) {
+      #ifdef ALLOW_CHESTS
+      if (window_id == 2 && slot > 40) {
+        // Get item pointers from the player's storage pointer
+        // See the handlePlayerUseItem function for more info on this hack
+        p_item = (uint16_t *)(storage_ptr + (slot - 41) * 3);
+        p_count = storage_ptr + (slot - 41) * 3 + 2;
+      } else
+      #endif
+      {
+        // Prevent accessing crafting-related slots when craft_items is locked
+        if (slot > 40 && player->flags & 0x80) return 1;
+        p_item = &player->inventory_items[slot];
+        p_count = &player->inventory_count[slot];
+      }
     }
 
     if (!readByte(client_fd)) { // no item?
-      if (slot != 255 && apply_changes) {
+      if (p_item != NULL && apply_changes) {
         *p_item = 0;
         *p_count = 0;
         #ifdef ALLOW_CHESTS
@@ -795,13 +839,14 @@ int cs_clickContainer (int client_fd) {
     }
 
     item = readVarInt(client_fd);
-    count = (uint8_t)readVarInt(client_fd);
+    int raw_count = readVarInt(client_fd);
+    count = (raw_count < 0 || raw_count > 64) ? 0 : (uint8_t)raw_count;
 
     // ignore components
     readLengthPrefixedData(client_fd);
     readLengthPrefixedData(client_fd);
 
-    if (count > 0 && apply_changes) {
+    if (count > 0 && apply_changes && p_item != NULL) {
       *p_item = item;
       *p_count = count;
       #ifdef ALLOW_CHESTS
@@ -827,7 +872,9 @@ int cs_clickContainer (int client_fd) {
   // assign cursor-carried item slot
   if (readByte(client_fd)) {
     player->flagval_16 = readVarInt(client_fd);
-    player->flagval_8 = readVarInt(client_fd);
+    int cursor_count = readVarInt(client_fd);
+    player->flagval_8 = (cursor_count < 0 || cursor_count > 64) ? 0 : cursor_count;
+    if (player->flagval_8 == 0) player->flagval_16 = 0;
     // ignore components
     readLengthPrefixedData(client_fd);
     readLengthPrefixedData(client_fd);
@@ -950,7 +997,7 @@ int cs_setHeldItem (int client_fd) {
   PlayerData *player;
   if (getPlayerData(client_fd, &player)) return 1;
 
-  uint8_t slot = readUint16(client_fd);
+  uint16_t slot = readUint16(client_fd);
   if (slot >= 9) return 1;
 
   player->hotbar = slot;
@@ -1231,7 +1278,8 @@ int cs_clientStatus (int client_fd) {
   PlayerData *player;
   if (getPlayerData(client_fd, &player)) return 1;
 
-  if (id == 0) {
+  // Respawn is only for dead players (otherwise it would be a free full heal)
+  if (id == 0 && player->health == 0) {
     sc_respawn(client_fd);
     resetPlayerData(player);
     // Players with a bed come back there
@@ -1264,6 +1312,7 @@ int cs_chat (int client_fd) {
 
   // To be safe, cap messages to 32 bytes before the buffer length
   readStringN(client_fd, 224);
+  if (recv_count < 0) return 1;
 
   PlayerData *player;
   if (getPlayerData(client_fd, &player)) return 1;
@@ -1325,6 +1374,9 @@ int cs_chat (int client_fd) {
     // Format output as a vanilla whisper
     int name_len = strlen(player->name);
     int text_len = message_len - text_offset;
+    // The reformatted whisper has to fit in the receive buffer
+    if (text_len > (int)MAX_RECV_BUF_LEN - 1 - (name_len + 24)) text_len = (int)MAX_RECV_BUF_LEN - 1 - (name_len + 24);
+    if (text_len < 0) text_len = 0;
     memmove(recv_buffer + name_len + 24, recv_buffer + text_offset, text_len);
     snprintf((char *)recv_buffer, sizeof(recv_buffer), "§7§o%s whispers to you:", player->name);
     recv_buffer[name_len + 23] = ' ';
@@ -1384,6 +1436,10 @@ int cs_interact (int client_fd) {
 
   // Ignore sneaking flag
   recv_all(client_fd, recv_buffer, 1, false);
+
+  // Entities that are out of reach (or do not exist) are ignored
+  PlayerData *actor;
+  if (getPlayerData(client_fd, &actor) || !isEntityInReach(actor, entity_id)) return 0;
 
   if (type == 0) { // Interact
     interactEntity(entity_id, client_fd);
@@ -1472,6 +1528,10 @@ int cs_playerLoaded (int client_fd) {
 
   PlayerData *player;
   if (getPlayerData(client_fd, &player)) return 1;
+
+  // Only valid while the client is still loading. Repeating it would
+  // re-announce the player to everyone each time.
+  if (!(player->flags & 0x20)) return 0;
 
   // Redirect handling to player join procedure
   handlePlayerJoin(player);

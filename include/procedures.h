@@ -33,6 +33,8 @@ uint8_t makeBlockChange (short x, uint8_t y, short z, uint16_t block);
 
 uint8_t isInstantlyMined (PlayerData *player, uint16_t block);
 uint8_t isColumnBlock (uint16_t block);
+uint8_t isBlockInReach (PlayerData *player, int x, int y, int z);
+uint8_t isEntityInReach (PlayerData *player, int entity_id);
 uint8_t isPassableBlock (uint16_t block);
 uint8_t isPassableSpawnBlock (uint16_t block);
 uint8_t isReplaceableBlock (uint16_t block);

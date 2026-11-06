@@ -326,7 +326,7 @@ double readDouble (int client_fd) {
 ssize_t readLengthPrefixedData (int client_fd) {
   uint32_t length = readVarInt(client_fd);
   if (length >= MAX_RECV_BUF_LEN) {
-    printf("ERROR: Received length (%lu) exceeds maximum (%u)\n", length, MAX_RECV_BUF_LEN);
+    printf("ERROR: Received length (%u) exceeds maximum (%u)\n", (unsigned)length, (unsigned)MAX_RECV_BUF_LEN);
     disconnectClient(&client_fd, -1);
     recv_count = 0;
     return 0;
@@ -334,9 +334,11 @@ ssize_t readLengthPrefixedData (int client_fd) {
   return recv_all(client_fd, recv_buffer, length, false);
 }
 
-// Reads a networked string into recv_buffer
+// Reads a networked string into recv_buffer.
+// On any failure recv_count is -1 and nothing is written to the buffer.
 void readString (int client_fd) {
   recv_count = readLengthPrefixedData(client_fd);
+  if (recv_count < 0 || recv_count >= MAX_RECV_BUF_LEN) { recv_count = -1; return; }
   recv_buffer[recv_count] = '\0';
 }
 // Reads a networked string of up to N bytes into recv_buffer
@@ -346,19 +348,33 @@ void readStringN (int client_fd, uint32_t max_length) {
     readString(client_fd);
     return;
   }
-  // Attempt to read full string within maximum
-  uint32_t length = readVarInt(client_fd);
-  if (max_length > length) {
-    recv_count = recv_all(client_fd, recv_buffer, length, false);
-    recv_buffer[recv_count] = '\0';
+  int32_t signed_length = readVarInt(client_fd);
+  // A broken or negative length is a protocol error: never loop on it
+  if (signed_length < 0) {
+    disconnectClient(&client_fd, -1);
+    recv_count = -1;
     return;
   }
-  // Read string up to maximum, dump the rest
-  recv_count = recv_all(client_fd, recv_buffer, max_length, false);
+  uint32_t length = (uint32_t)signed_length;
+  // No single string may be longer than the receive buffer allows to skip
+  if (length > 32767) {
+    disconnectClient(&client_fd, -1);
+    recv_count = -1;
+    return;
+  }
+  uint32_t to_read = length < max_length ? length : max_length;
+  recv_count = recv_all(client_fd, recv_buffer, to_read, false);
+  if (recv_count < 0) return;
   recv_buffer[recv_count] = '\0';
-  uint8_t dummy;
-  for (uint32_t i = max_length; i < length; i ++) {
-    recv_all(client_fd, &dummy, 1, false);
+  // Read string up to maximum, dump the rest
+  // (skip into a small local buffer: recv_buffer holds the string)
+  uint32_t skip = length - to_read;
+  while (skip > 0) {
+    uint8_t skip_buf[32];
+    uint32_t n = skip > sizeof(skip_buf) ? (uint32_t)sizeof(skip_buf) : skip;
+    ssize_t got = recv_all(client_fd, skip_buf, n, false);
+    if (got <= 0) break;
+    skip -= (uint32_t)got;
   }
 }
 

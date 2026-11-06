@@ -37,6 +37,7 @@
 #include "varnum.h"
 #include "packets.h"
 #include "worldgen.h"
+#include <math.h>
 #include "registries.h"
 #include "blocks.h"
 #include "procedures.h"
@@ -190,9 +191,9 @@ void handlePacket (int client_fd, int length, int packet_id, int state) {
     case 0x20:
       if (state == STATE_PLAY) {
 
-        double x, y, z;
-        float yaw, pitch;
-        uint8_t on_ground;
+        double x = 0, y = 0, z = 0;
+        float yaw = 0, pitch = 0;
+        uint8_t on_ground = 0;
 
         // Read player position (and rotation)
         if (packet_id == 0x1D) cs_setPlayerPosition(client_fd, &x, &y, &z, &on_ground);
@@ -202,6 +203,16 @@ void handlePacket (int client_fd, int length, int packet_id, int state) {
 
         PlayerData *player;
         if (getPlayerData(client_fd, &player)) break;
+
+        // Ignore impossible numbers (NaN, infinity, far outside the world).
+        // Converting those to integers below would be undefined behavior.
+        if (packet_id == 0x1D || packet_id == 0x1E) {
+          if (!(fabs(x) < 30000000.0 && fabs(z) < 30000000.0 && fabs(y) < 100000.0)) break;
+          if (fabs(x) > 32000.0 || fabs(z) > 32000.0) break; // does not fit the world's short coordinates
+        }
+        if (packet_id == 0x1E || packet_id == 0x1F) {
+          if (!(fabsf(yaw) < 1000000.0f) || !(fabsf(pitch) < 1000000.0f)) break;
+        }
 
         // Remember the exact position, for aiming buckets
         if (packet_id == 0x1D || packet_id == 0x1E) {
@@ -305,6 +316,10 @@ void handlePacket (int client_fd, int length, int packet_id, int state) {
         // Calculate distance between previous and current chunk coordinates
         short dx = _x - (player->x < 0 ? player->x - 16 : player->x) / 16;
         short dz = _z - (player->z < 0 ? player->z - 16 : player->z) / 16;
+        // A jump of many chunks at once (teleport hacks) must not make the
+        // server generate and send hundreds of chunks in one go
+        if (dx > 3) dx = 3; else if (dx < -3) dx = -3;
+        if (dz > 3) dz = 3; else if (dz < -3) dz = -3;
 
         // Prevent players from leaving the world
         if (cy < 0) {
@@ -763,6 +778,13 @@ int main () {
     int packet_id = readVarInt(client_fd);
     if (packet_id == VARNUM_ERROR) {
       disconnectClient(&clients[client_index], 3);
+      continue;
+    }
+    // A packet is at least as long as its ID, and no real client packet
+    // comes anywhere near this size. Refuse the rest instead of trying to
+    // skip a negative or gigantic number of bytes.
+    if (length < sizeVarInt(packet_id) || length > 32767) {
+      disconnectClient(&clients[client_index], 2);
       continue;
     }
     // Get client connection state

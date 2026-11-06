@@ -20,7 +20,7 @@ int32_t readVarInt (int client_fd) {
     byte = readByte(client_fd);
     if (recv_count != 1) return VARNUM_ERROR;
 
-    value |= (byte & SEGMENT_BITS) << position;
+    value |= (int32_t)(((uint32_t)(byte & SEGMENT_BITS)) << position);
 
     if ((byte & CONTINUE_BIT) == 0) break;
 

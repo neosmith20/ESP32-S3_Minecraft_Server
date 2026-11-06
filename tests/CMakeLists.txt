@@ -23,7 +23,7 @@ endfunction()
 add_executable(mcserver_native ${SERVER_SOURCES})
 configure_host_target(mcserver_native)
 
-foreach(test_name IN ITEMS chunks game)
+foreach(test_name IN ITEMS chunks game security)
   add_executable(test_${test_name} "${SERVER_ROOT}/tests/test_${test_name}.c" ${CORE_SOURCES})
   configure_host_target(test_${test_name})
   add_test(NAME ${test_name} COMMAND test_${test_name})

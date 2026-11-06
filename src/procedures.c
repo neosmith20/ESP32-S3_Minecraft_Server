@@ -80,9 +80,18 @@ void resetPlayerData (PlayerData *player) {
 // Assigns the given data to a player_data entry
 int reservePlayerData (int client_fd, uint8_t *uuid, char *name) {
 
+  // An all-zero UUID would match every empty slot and skip initialization
+  uint8_t uuid_used = false;
+  for (int j = 0; j < 16; j ++) if (uuid[j] != 0) uuid_used = true;
+  if (!uuid_used) return 1;
+
   for (int i = 0; i < MAX_PLAYERS; i ++) {
     // Found existing player entry (UUID match)
     if (memcmp(player_data[i].uuid, uuid, 16) == 0) {
+      // Note: this server has no online authentication, so a UUID (which a
+      // client derives from the name) cannot prove who someone is. A second
+      // connection with the same UUID takes over, so that a player whose
+      // WiFi dropped can come right back without waiting for a timeout.
       // Set network file descriptor and username
       player_data[i].client_fd = client_fd;
       memcpy(player_data[i].name, name, 16);
@@ -943,6 +952,37 @@ static uint8_t isFallingBlock (uint16_t block) {
 uint8_t isColumnBlock (uint16_t block) {
   if (isFallingBlock(block)) return false;
   return (getBlockFlags(block) & BF_COLUMN) != 0;
+}
+
+// Anti-cheat: how far from the player the server accepts block actions
+// (vanilla allows about 4.5-6 blocks; this is a little generous for lag).
+#define REACH_BLOCKS 8
+
+uint8_t isBlockInReach (PlayerData *player, int x, int y, int z) {
+  // Vertical range of real worlds on this server is 0-255
+  if (y < 0 || y > 255) return false;
+  int dx = x - player->x, dy = y - (int)player->y, dz = z - player->z;
+  if (dx < -REACH_BLOCKS || dx > REACH_BLOCKS) return false;
+  if (dz < -REACH_BLOCKS || dz > REACH_BLOCKS) return false;
+  if (dy < -REACH_BLOCKS - 1 || dy > REACH_BLOCKS + 1) return false;
+  return true;
+}
+
+// Same idea for attacking or using an entity (player or mob)
+uint8_t isEntityInReach (PlayerData *player, int entity_id) {
+  int ex, ey, ez;
+  if (entity_id > 0) {
+    PlayerData *target;
+    if (getPlayerData(entity_id, &target)) return false;
+    ex = target->x; ey = target->y; ez = target->z;
+  } else {
+    int mob_index = -entity_id - 2;
+    if (mob_index < 0 || mob_index >= MAX_MOBS) return false;
+    MobData *mob = &mob_data[mob_index];
+    if (mob->type == 0) return false;
+    ex = mob->x; ey = mob->y; ez = mob->z;
+  }
+  return isBlockInReach(player, ex, ey, ez);
 }
 
 // Checks whether the given block is a door, trapdoor or gate that is open
