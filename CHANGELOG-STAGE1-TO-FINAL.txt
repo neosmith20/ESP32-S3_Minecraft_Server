@@ -1,0 +1,78 @@
+ESP32-S3 MINECRAFT SERVER - FULL WORK SUMMARY, STAGE 1 TO LAST ITEM
+(Minecraft Java 1.21.8 on ESP32-S3 N16R8. Based on p2r3's work, GPL-3.0.)
+
+"Tested" below means PC tests, the emulator, and GitHub's automatic checks.
+Real save lag, flash speed, WiFi and player capacity can ONLY be checked on your board.
+
+STAGE 1 - GAME FEATURES AND FIXES (earlier sessions)
+  Added:   farming (farmland, wheat, carrots, potatoes, hoes, bread, bone meal), buckets
+           (water/lava), timed furnace, animals that follow food/breed/grow up, beds
+           (sleep skips the night, respawn point), ore veins and cave pockets, grass
+           spreading, saplings growing into trees, short grass on plains, optional test kit.
+  Changed: building is saved to a small journal every 15 s instead of rewriting world pages
+           (this is the fix for the old flash-saving lag); tools wear out after fixed uses;
+           water buckets leave a new source like the real game; plant growth no longer slows in
+           big worlds; build stops with a clear message if registries.h is out of date.
+  Fixed:   grass needing a pickaxe, tools wearing on air, mobs hitting through doors/walls/glass,
+           full save skipping pages, a firmware build error (string.h), floating grass tufts.
+
+STAGE 2 - EMULATOR TESTING
+  Added:   tests that boot the REAL firmware in Espressif's emulator and play it with scripted
+           Minecraft clients: save/restart, power cut, farming, two players, memory use, crashes.
+           Runs automatically in GitHub (advisory job). Emulator speed is NOT board speed.
+
+STAGE 3 - PLAYER DATA, SAND, AUDIT
+  Added:   players.bin snapshot (every 60 s and when someone leaves) and beds.bin so inventory,
+           position and beds survive crashes; falling sand/gravel (unsupported stacks drop and
+           land instantly); AUDIT.md (server compared with vanilla); change summary file.
+
+STAGE 4 - FULL SECURITY REVIEW OF PACKET HANDLING (this session)
+  Fixed (all found by reading the code, each covered by a test):
+    - A failed string read wrote one byte before the buffer.
+    - A broken string length could make the server loop for billions of steps.
+    - Inventory clicks: invalid slots wrote outside the player's data; chest slots worked with
+      no chest open (wild pointer); any item count and unlimited number of changes accepted;
+      dropping from an empty cursor could create 255 items.
+    - The whisper command (!msg) could overflow the receive buffer.
+    - The handshake could jump straight to "in game" and skip login.
+    - An all-zero player ID skipped player setup.
+    - Respawn worked while alive (free full heal); "player loaded" could be repeated.
+    - Player names could contain control characters (now letters/digits/underscore only).
+    - Mining, placing and attacking had no distance limit (now about 8 blocks).
+    - NaN/infinite/huge movement numbers were converted to integers (undefined behavior).
+    - A huge teleport made the server send hundreds of chunks (now capped).
+    - Packet length was unchecked (now limited to 2048 bytes).
+    - A client sending HALF a packet froze the server for ALL players for up to 15 s at a time,
+      and could repeat it forever. Packets are now read only when complete; half packets are dropped
+      after 5 s. (Confirmed: the old server failed the new abuse test, the new one passes.)
+    - Position encoding used undefined bit shifts (now safe).
+  Added tests: tests/test_security.c (hostile packets, run with memory/undefined-behavior checking),
+  tests/run_abuse.py (stalled and hostile connections against the real server). Both run in GitHub.
+  Test clients now step next to a block before mining/placing (the old ones mined from 40 blocks away).
+  Known and left alone: no online login (anyone can use any name, like any offline-mode server);
+  inventory contents are still trusted from the client apart from slot/count limits; no speed/fly
+  detection; a client that stops READING can still stall sending for up to 15 s; two old quirks
+  (odd-address chest reads that already work on your board; one world-generation shift that would
+  change existing worlds if touched).
+
+STAGE 5 - PERFORMANCE REVIEW (this session)
+  Measured on a PC (relative numbers only): block lookups ~0.1 microsecond, 20,000 block changes 3 ms,
+  growth pass ~170 microseconds, saves and journal flush under 1 ms on PC disk. Nothing was a bottleneck.
+  Changed: the server tries accept() only every 8th loop pass (fewer system calls); teleport chunk cap;
+  half-packet handling (above) removes the worst stall. Save timing was deliberately NOT touched.
+
+RESULTS
+  PC tests (game, chunks, save, security), PC end-to-end, abuse test, and the 4 emulator tests all pass.
+  Latest GitHub run: firmware build, host tests, emulator tests and release job all green.
+  Emulator memory: internal RAM min ~166 KB free, PSRAM ~3.59 MB free (two players, farming), no crashes.
+
+FILES TO COPY to I:\ESP32\Version-2\ESP32-S3_Minecraft_Server-main (then delete .pio, build, upload; never "Erase Flash"):
+  src\main.c  src\packets.c  src\procedures.c  src\tools.c  src\serialize.c  src\worldgen.c  src\varnum.c
+  include\globals.h  include\procedures.h  include\serialize.h
+  (Also on GitHub: all tests, AUDIT.md, S3-CHANGES.md, this file.)
+
+STILL OPEN
+  - Zombie hitting through the door: send me the chat line that starts "Hit by mob at..." (debug still on).
+  - Natural-lake water hole: cannot reproduce; may be an old saved hole from an older build.
+  - Only your board can show: save lag, real flash speed, WiFi, player capacity, tick timing.
+  - Not realistic on this board: redstone, fire, TNT, XP/enchanting, villagers, Nether/End, skeletons, creepers.
