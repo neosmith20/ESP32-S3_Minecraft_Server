@@ -2624,8 +2624,20 @@ void tickFarming (uint32_t speed) {
   struct { short x; uint8_t y; short z; } trees[4];
   int n_trees = 0;
 
+  // Only FARM_BUDGET blocks are looked at per call, so with lots of dirt,
+  // grass and crops a full pass over all of them takes several calls. Every
+  // block is therefore looked at less often, and each look counts for as
+  // many "5 second steps" as the last full pass took, so plants grow at the
+  // same speed however big the world is.
   static int scan_pos = 0;
-  if (scan_pos >= block_changes_count) scan_pos = 0;
+  static uint32_t calls_this_pass = 0, steps_per_look = 1;
+  if (scan_pos >= block_changes_count) {
+    scan_pos = 0;
+    steps_per_look = calls_this_pass < 1 ? 1 : (calls_this_pass > 60 ? 60 : calls_this_pass);
+    calls_this_pass = 0;
+  }
+  calls_this_pass ++;
+  speed *= steps_per_look;
 
   int i = scan_pos;
   for (; i < block_changes_count && looked_at < FARM_BUDGET; i ++) {
@@ -2669,7 +2681,7 @@ void tickFarming (uint32_t speed) {
       if (is_dirt) {
         // Dirt turns to grass when grass is next to it and it is open to the
         // sky, about once a minute on average
-        if (open_above && fast_rand() % 12 == 0) {
+        if (open_above && fast_rand() % 12 < (speed > 12 ? 12 : speed)) {
           uint8_t grass_near = false;
           for (int dx = -1; dx <= 1 && !grass_near; dx ++) for (int dz = -1; dz <= 1 && !grass_near; dz ++) {
             for (int dy = -1; dy <= 1; dy ++) {
@@ -2678,7 +2690,7 @@ void tickFarming (uint32_t speed) {
           }
           if (grass_near) next = B_grass_block;
         }
-      } else if (!open_above && !isReplaceableBlock(above) && fast_rand() % 12 == 0) {
+      } else if (!open_above && !isReplaceableBlock(above) && fast_rand() % 12 < (speed > 12 ? 12 : speed)) {
         // Grass with something solid on top dies back to dirt
         next = B_dirt;
       }
@@ -2696,7 +2708,7 @@ void tickFarming (uint32_t speed) {
       uint16_t next = block;
       if (hasWaterNearby(x, y, z)) {
         if (moisture != 7) next = BMIN_farmland + OFF_farmland[7];
-      } else if (fast_rand() % 14 != 0) {
+      } else if (fast_rand() % 14 >= (speed > 14 ? 14 : speed)) {
         // Like random ticks in the real game, only about 1 look in 14
         // (roughly once a minute) can dry the farmland out
       } else if (moisture > 0) {
