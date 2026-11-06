@@ -461,6 +461,49 @@ int main (void) {
     CHECK(st.burn_left > 0, "the fire keeps burning without material");
   }
 
+  // ---- grass spreads, saplings grow ----
+  {
+    clearArea();
+    makeBlockChange(X, gy, Z, B_dirt);
+    makeBlockChange(X + 1, gy, Z, B_grass_block);
+    makeBlockChange(X, gy + 1, Z, B_air);
+    int spread = 0;
+    for (int t = 0; t < 600 && !spread; t ++) { tickFarming(1); spread = IS_BLOCK(getBlockAt(X, gy, Z), grass_block); }
+    CHECK(spread, "dirt next to grass turns into grass over time");
+    // dirt far from any grass stays dirt, and dirt under a block stays dirt
+    makeBlockChange(X + 4, gy, Z + 4, B_dirt);
+    makeBlockChange(X + 4, gy, Z + 5, B_dirt);
+    makeBlockChange(X + 5, gy, Z + 5, B_stone);
+    makeBlockChange(X + 4, gy + 1, Z + 5, B_stone);
+    makeBlockChange(X + 3, gy, Z + 4, B_stone); makeBlockChange(X + 5, gy, Z + 4, B_stone);
+    makeBlockChange(X + 4, gy, Z + 3, B_stone); makeBlockChange(X + 4, gy, Z + 6, B_stone);
+    makeBlockChange(X + 3, gy, Z + 5, B_stone); makeBlockChange(X + 3, gy, Z + 6, B_stone);
+    makeBlockChange(X + 5, gy, Z + 6, B_stone); makeBlockChange(X + 3, gy, Z + 3, B_stone); makeBlockChange(X + 5, gy, Z + 3, B_stone);
+    for (int t = 0; t < 600; t ++) tickFarming(1);
+    CHECK(IS_BLOCK(getBlockAt(X + 4, gy, Z + 5), dirt), "dirt under a block does not turn into grass");
+    // grass covered by a block dies back to dirt
+    makeBlockChange(X + 1, gy + 1, Z, B_stone);
+    int died = 0;
+    for (int t = 0; t < 600 && !died; t ++) { tickFarming(1); died = IS_BLOCK(getBlockAt(X + 1, gy, Z), dirt); }
+    CHECK(died, "grass under a block turns back into dirt");
+    // saplings grow into trees
+    clearArea();
+    makeBlockChange(X + 2, gy, Z + 2, B_grass_block);
+    makeBlockChange(X + 2, gy + 1, Z + 2, B_oak_sapling);
+    int grew = 0;
+    for (int t = 0; t < 4000 && !grew; t ++) { tickFarming(1); grew = IS_BLOCK(getBlockAt(X + 2, gy + 1, Z + 2), oak_log); }
+    CHECK(grew, "a sapling grows into a tree over time");
+    CHECK(IS_BLOCK(getBlockAt(X + 2, gy + 6, Z + 2), oak_leaves) || IS_BLOCK(getBlockAt(X + 2, gy + 5, Z + 2), oak_leaves), "the tree has leaves");
+    // a sapling with no room above stays a sapling
+    clearArea();
+    makeBlockChange(X + 2, gy, Z + 2, B_grass_block);
+    makeBlockChange(X + 2, gy + 1, Z + 2, B_oak_sapling);
+    makeBlockChange(X + 2, gy + 3, Z + 2, B_stone);
+    for (int t = 0; t < 2000; t ++) tickFarming(1);
+    CHECK(IS_BLOCK(getBlockAt(X + 2, gy + 1, Z + 2), oak_sapling), "a sapling under a roof does not grow");
+    clearArea();
+  }
+
   // ---- animals: luring, breeding, growing up ----
   {
     clearArea();

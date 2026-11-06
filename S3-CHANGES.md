@@ -219,3 +219,8 @@ Files: `src/crafting.c`, `src/procedures.c`, `src/packets.c`, `include/globals.h
   point. At night, when every player is by a bed for 5 seconds, the night is
   skipped (not with monsters nearby). There is no lying-down animation, and
   respawn points are forgotten when the server restarts.
+
+## Grass spreading and tree growth
+- Dirt that players placed next to grass slowly turns into grass (if open to the sky above).
+- Grass covered by a solid block slowly turns back into dirt.
+- Oak saplings on dirt/grass with 5 free blocks above grow into trees after about 8 minutes on average.

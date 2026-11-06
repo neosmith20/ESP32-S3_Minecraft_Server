@@ -2615,6 +2615,9 @@ void tickFarming (uint32_t speed) {
 
   struct { short x; uint8_t y; short z; uint16_t state; } pending[FARM_BUDGET];
   int n_pending = 0, looked_at = 0;
+  // Saplings that are ready to grow into trees (a few per call is plenty)
+  struct { short x; uint8_t y; short z; } trees[4];
+  int n_trees = 0;
 
   static int scan_pos = 0;
   if (scan_pos >= block_changes_count) scan_pos = 0;
@@ -2627,11 +2630,60 @@ void tickFarming (uint32_t speed) {
       if (IS_BLOCK(block, chest)) { i += 14; continue; }
     #endif
     uint8_t family = getBlockFamily(block);
-    if (family != FAM_CROP && family != FAM_FARMLAND) continue;
+    uint8_t is_sapling = IS_BLOCK(block, oak_sapling);
+    uint8_t is_dirt = IS_BLOCK(block, dirt);
+    uint8_t is_grass = IS_BLOCK(block, grass_block);
+    if (family != FAM_CROP && family != FAM_FARMLAND && !is_sapling && !is_dirt && !is_grass) continue;
     looked_at ++;
 
     short x = block_changes[i].x, z = block_changes[i].z;
     uint8_t y = block_changes[i].y;
+
+    if (is_sapling) {
+      // A sapling on dirt, grass or mud with room above grows into a tree
+      // after about 8 minutes on average
+      uint16_t soil = getBlockAt(x, y - 1, z);
+      if (soil != B_dirt && soil != B_grass_block && soil != B_snowy_grass_block && soil != B_mud) continue;
+      if (fast_rand() >= (uint32_t)(44739243ULL * speed)) continue;
+      uint8_t room = true;
+      for (int dy = 1; dy <= 5; dy ++) {
+        uint16_t above = getBlockAt(x, y + dy, z);
+        if (!isReplaceableBlock(above) && !IS_BLOCK(above, oak_leaves)) { room = false; break; }
+      }
+      if (room && n_trees < 4) {
+        trees[n_trees].x = x; trees[n_trees].y = y; trees[n_trees].z = z;
+        n_trees ++;
+      }
+      continue;
+    }
+
+    if (is_dirt || is_grass) {
+      uint16_t above = getBlockAt(x, y + 1, z);
+      uint8_t open_above = isPassableBlock(above) && !IS_WATER(above) && !IS_LAVA(above);
+      uint16_t next = block;
+      if (is_dirt) {
+        // Dirt turns to grass when grass is next to it and it is open to the
+        // sky, about once a minute on average
+        if (open_above && fast_rand() % 12 == 0) {
+          uint8_t grass_near = false;
+          for (int dx = -1; dx <= 1 && !grass_near; dx ++) for (int dz = -1; dz <= 1 && !grass_near; dz ++) {
+            for (int dy = -1; dy <= 1; dy ++) {
+              if (IS_BLOCK(getBlockAt(x + dx, y + dy, z + dz), grass_block)) { grass_near = true; break; }
+            }
+          }
+          if (grass_near) next = B_grass_block;
+        }
+      } else if (!open_above && !isReplaceableBlock(above) && fast_rand() % 12 == 0) {
+        // Grass with something solid on top dies back to dirt
+        next = B_dirt;
+      }
+      if (next != block && n_pending < FARM_BUDGET) {
+        pending[n_pending].x = x; pending[n_pending].y = y; pending[n_pending].z = z;
+        pending[n_pending].state = next;
+        n_pending ++;
+      }
+      continue;
+    }
 
     if (family == FAM_FARMLAND) {
       int moisture = getFarmlandMoisture(block);
@@ -2675,6 +2727,9 @@ void tickFarming (uint32_t speed) {
   // Apply the changes after scanning, as they can reshuffle block_changes
   for (int j = 0; j < n_pending; j ++) {
     makeBlockChange(pending[j].x, pending[j].y, pending[j].z, pending[j].state);
+  }
+  for (int j = 0; j < n_trees; j ++) {
+    placeTreeStructure(trees[j].x, trees[j].y, trees[j].z);
   }
 
 }
