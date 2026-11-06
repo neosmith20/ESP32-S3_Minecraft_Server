@@ -173,6 +173,46 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  emulator-tests:
+    # Boots the real firmware in Espressif's emulator and plays it with a scripted
+    # client. ADVISORY for now (continue-on-error) until it has proven stable on
+    # GitHub runners. The emulator's timing is not a real board's timing.
+    name: Emulator tests (real firmware in esp-emu)
+    needs: registries
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore real registry C files
+        uses: actions/download-artifact@v4
+        with:
+          name: minecraft-registry-sources
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install PlatformIO and esptool
+        run: python -m pip install --disable-pip-version-check 'platformio==6.1.19' esptool
+
+      - name: Install esp-emu (pinned)
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/espressif/esp-emulator/main/install.sh | sh -s -- --version 0.51.0
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Build the emulator test firmware and merge the 16 MB flash image
+        run: bash tests/emu/build_image.sh
+
+      - name: Run emulator tests
+        run: >
+          python3 tests/emu/run_emu_tests.py
+          .pio/build/esp32s3-n16r8-emu/merged_emu.bin
+          .pio/build/esp32s3-n16r8-emu/firmware.elf
+          "$RUNNER_TEMP/emu-work"
+
   publish-development-release:
     name: Publish versioned development pre-release
     needs: [registries, host-tests, esp32-firmware]

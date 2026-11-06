@@ -227,3 +227,6 @@ Files: `src/crafting.c`, `src/procedures.c`, `src/packets.c`, `include/globals.h
 
 ## Short grass on plains
 - Plains now have tufts of short grass (about 1 grass block in 6). Breaking one drops wheat seeds about 1 time in 8.
+
+## Emulator tests (tests/emu)
+The real firmware image (16 MB flash, 8 MB PSRAM, LittleFS save partition) now boots in Espressif's esp-emu, and a scripted Minecraft client plays it: restart persistence, a power cut with a player online, two players, hoe/seeds/bone meal, free-memory and crash checks. The emulator's speed is not a real board's speed, so save latency still has to be checked on hardware. See tests/emu/README.md.
