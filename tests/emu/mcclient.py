@@ -234,6 +234,11 @@ class Client:
         self.sequence += 1
         self.send(0x3F, bytes([0]) + pack_pos(x, y, z) + bytes([face]) + struct.pack(">fff", 0.5, 1.0, 0.5) + bytes([0, 0]) + varint(self.sequence))
 
+    def select_slot(self, slot):
+        """Select a hotbar slot (0-8)."""
+        self.send(0x34, struct.pack(">h", slot))
+        self.pump(1, quiet=0.5)
+
     def chat(self, text):
         # Chat Message: message, timestamp, salt, no signature, message count, acknowledged
         self.send(0x08, mcstring(text) + struct.pack(">q", int(time.time() * 1000)) + struct.pack(">q", 0) + bytes([0]) + varint(0) + bytes([0, 0, 0]))

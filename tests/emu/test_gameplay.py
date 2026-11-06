@@ -19,8 +19,7 @@ SLOT_HOE, SLOT_SEEDS, SLOT_BONE_MEAL = 0, 1, 4
 
 
 def select(c, slot):
-    c.send(0x34, struct.pack(">h", slot))
-    c.pump(1, quiet=0.5)
+    c.select_slot(slot)
 
 
 def grass_column(c, skip=()):

@@ -13,6 +13,9 @@ sys.path.insert(0, os.path.dirname(__file__))
 from emulator import Emulator, fresh_image
 from mcclient import Client
 
+# hotbar slot of the cobblestone in the test kit (see GIVE_TEST_KIT in src/procedures.c)
+SLOT_COBBLESTONE = 7
+
 
 def grass_columns(c, count):
     found = []
@@ -43,11 +46,12 @@ def main(image_src, elf, workdir):
     assert len(cols) == 3, "not enough grass columns"
     (ax, ay, az), (bx, by, bz), (px, py, pz) = cols
 
-    # mine two grass blocks (dirt goes to the hotbar), then place dirt on a third column
+    # mine two grass blocks, then place cobblestone (test kit slot) on a third column
     c.dig(ax, ay, az)
     c.dig(bx, by, bz)
     c.pump(3)
     assert c.block_at(ax, ay, az) == 0 and c.block_at(bx, by, bz) == 0, "digging failed"
+    c.select_slot(SLOT_COBBLESTONE)
     c.place(px, py, pz, face=1)
     c.pump(3)
     placed = c.block_at(px, py + 1, pz)
@@ -72,8 +76,7 @@ def main(image_src, elf, workdir):
     c2.join()
     ok_a = c2.block_at(ax, ay, az) == 0
     ok_b = c2.block_at(bx, by, bz) == 0
-    # placed dirt next to grass may legitimately have turned into grass meanwhile
-    ok_p = c2.block_at(px, py + 1, pz) in (placed, 9)
+    ok_p = c2.block_at(px, py + 1, pz) == placed
     print("after power cut: dug A", ok_a, "dug B", ok_b, "placed", ok_p)
     if os.environ.get("EMU_DEBUG"):
         print("--- second boot log ---")
