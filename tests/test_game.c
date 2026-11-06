@@ -461,6 +461,27 @@ int main (void) {
     CHECK(st.burn_left > 0, "the fire keeps burning without material");
   }
 
+  // ---- natural short grass does not float ----
+  {
+    int fx = 0, fy = 0, fz = 0, found = 0;
+    for (int x = 200; x < 1000 && !found; x += 1) for (int z = 200; z < 1000 && !found; z += 7) {
+      for (int y = 64; y < 90; y ++) {
+        if (getBlockAt(x, y, z) == B_short_grass) { fx = x; fy = y; fz = z; found = 1; break; }
+      }
+    }
+    CHECK(found, "plains have natural short grass");
+    if (found) {
+      CHECK(getBlockAt(fx, fy - 1, fz) == B_grass_block || getBlockAt(fx, fy - 1, fz) == B_snowy_grass_block, "natural short grass sits on a grass block");
+      makeBlockChange(fx, fy - 1, fz, B_air);
+      CHECK(getBlockAt(fx, fy, fz) == B_air, "short grass vanishes when the block under it is dug away");
+      int cx = fx & ~15, cz = fz & ~15, cy = fy & ~15;
+      if (fy - cy < 15) {
+        buildChunkSection(cx, cy, cz);
+        CHECK(chunk_section[(fx - cx) + ((fz - cz) << 4) + ((fy - cy) << 8)] == B_air, "sent chunk has no floating short grass");
+      }
+    }
+  }
+
   // ---- grass spreads, saplings grow ----
   {
     clearArea();

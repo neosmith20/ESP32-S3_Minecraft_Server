@@ -427,7 +427,15 @@ uint16_t getBlockAt (int x, int y, int z) {
     .biome = getChunkBiome(anchor_x, anchor_z)
   };
 
-  return getTerrainAt(x, y, z, anchor);
+  uint16_t terrain = getTerrainAt(x, y, z, anchor);
+
+  // A natural tuft of short grass vanishes if the block under it was changed
+  if (terrain == B_short_grass) {
+    uint16_t below = getBlockChange(x, y - 1, z);
+    if (below != BLOCK_NONE && !IS_BLOCK(below, grass_block) && !IS_BLOCK(below, dirt) && !(getBlockFlags(below) & BF_SEPARATE_UPDATE)) return B_air;
+  }
+
+  return terrain;
 
 }
 
@@ -521,6 +529,12 @@ static inline void applyBlockChange (const BlockChange *change, int cx, int cy, 
   int dy = change->y - cy;
   int dz = change->z - cz;
   chunk_section[dx + (dz << 4) + (dy << 8)] = change->block;
+  // A natural tuft of short grass can't float: if what it stood on was dug
+  // away or replaced, it goes too
+  if (dy < 15 && !IS_BLOCK(change->block, grass_block) && !IS_BLOCK(change->block, dirt)) {
+    int above = dx + (dz << 4) + ((dy + 1) << 8);
+    if (chunk_section[above] == B_short_grass && getBlockChange(change->x, change->y + 1, change->z) == BLOCK_NONE) chunk_section[above] = B_air;
+  }
 }
 
 /**
