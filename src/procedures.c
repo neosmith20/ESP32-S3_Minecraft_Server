@@ -2540,11 +2540,16 @@ uint8_t mobCanReachPlayer (short mx, uint8_t my, short mz, short px, uint8_t py,
   } else return false; // out of reach
 
   // The line has to be open at the height of the player's feet and head
+  // (if the mob stands higher or lower than the player, the heights of both
+  // of them have to be open, so a hit can't slip over or under a door)
+  int low = my < py ? my : py;
+  int high = (my > py ? my : py) + 1;
   for (int i = 0; i < n; i ++) {
-    if (
-      isPassableBlock(getBlockAt(cells_x[i], py, cells_z[i])) &&
-      isPassableBlock(getBlockAt(cells_x[i], py + 1, cells_z[i]))
-    ) return true;
+    uint8_t open = true;
+    for (int y = low; y <= high && open; y ++) {
+      if (!isPassableBlock(getBlockAt(cells_x[i], y, cells_z[i]))) open = false;
+    }
+    if (open) return true;
   }
   return false;
 

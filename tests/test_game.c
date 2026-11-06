@@ -637,6 +637,8 @@ int main (void) {
   makeBlockChange(X + 1, gy + 1, Z, BMIN_oak_door + OFF_door[DIR_EAST][0][0]);
   makeBlockChange(X + 1, gy + 2, Z, BMIN_oak_door + OFF_door[DIR_EAST][1][0]);
   CHECK(!mobCanReachPlayer(X, gy + 1, Z, X + 2, gy + 1, Z), "a closed door blocks the hit");
+  CHECK(!mobCanReachPlayer(X, gy + 2, Z, X + 2, gy + 1, Z), "a closed door blocks a hit from a mob standing one block higher");
+  CHECK(!mobCanReachPlayer(X, gy + 1, Z, X + 2, gy + 2, Z), "a closed door blocks a hit on a player standing one block higher");
   makeBlockChange(X + 1, gy + 1, Z, BMIN_oak_door + OFF_door[DIR_EAST][0][1]);
   makeBlockChange(X + 1, gy + 2, Z, BMIN_oak_door + OFF_door[DIR_EAST][1][1]);
   CHECK(mobCanReachPlayer(X, gy + 1, Z, X + 2, gy + 1, Z), "an open door lets the hit through");
