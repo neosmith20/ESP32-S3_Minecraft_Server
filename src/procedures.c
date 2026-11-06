@@ -927,8 +927,21 @@ uint8_t isInstantlyMined (PlayerData *player, uint16_t block) {
 
 }
 
+// Sand and gravel fall instead of breaking when unsupported
+static uint8_t isFallingBlock (uint16_t block) {
+  if (block == B_sand) return true;
+  #ifdef B_red_sand
+  if (block == B_red_sand) return true;
+  #endif
+  #ifdef B_gravel
+  if (block == B_gravel) return true;
+  #endif
+  return false;
+}
+
 // Checks whether the given block has to have something beneath it
 uint8_t isColumnBlock (uint16_t block) {
+  if (isFallingBlock(block)) return false;
   return (getBlockFlags(block) & BF_COLUMN) != 0;
 }
 
@@ -1456,6 +1469,23 @@ static void removeBed (short x, short y, short z, uint16_t block) {
   }
 }
 
+// Sand (and gravel) fall when nothing is under them. The whole falling stack
+// lands at once instead of animating, which keeps it cheap for the ESP32.
+static void settleFallingBlocks (short x, short y, short z) {
+  uint16_t stack[8];
+  int n = 0;
+  while (n < 8 && isFallingBlock(getBlockAt(x, y + n, z))) {
+    stack[n] = getBlockAt(x, y + n, z);
+    n ++;
+  }
+  if (n == 0 || y < -60) return;
+  short land = y;
+  while (land > -60 && getBlockAt(x, land - 1, z) == B_air) land --;
+  if (land == y) return;
+  for (int i = 0; i < n; i ++) makeBlockChange(x, y + i, z, B_air);
+  for (int i = 0; i < n; i ++) makeBlockChange(x, land + i, z, stack[i]);
+}
+
 // Called after a block was removed: removes blocks that depended on it
 // (doors standing on it, torches and ladders hanging on it) and updates
 // fences, panes and walls that were connected to it.
@@ -1481,6 +1511,7 @@ static void updateAfterRemoval (PlayerData *player, short x, short y, short z) {
     if (drop) givePlayerItem(player, drop, 1);
   }
 
+  settleFallingBlocks(x, y + 1, z);
   refreshNeighborConnections(x, y, z);
 
 }
@@ -2008,6 +2039,7 @@ void handlePlayerUseItem (PlayerData *player, short x, short y, short z, uint8_t
   ) {
     // Apply server-side block change
     if (makeBlockChange(px, py, pz, state)) return;
+    settleFallingBlocks(px, py, pz);
     if (is_door) {
       int facing, upper, open;
       decodeDoor(state, &facing, &upper, &open);

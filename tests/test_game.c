@@ -700,6 +700,21 @@ int main (void) {
   CHECK(!mobCanReachPlayer(X, gy + 1, Z, X + 2, gy + 1, Z), "glass blocks the hit");
   makeBlockChange(X + 1, gy + 1, Z, B_air);
 
+  // ---- falling sand ----
+  {
+    int sx = X + 40, sz = Z + 40, sy = gy + 10;
+    for (int i = 0; i < 6; i ++) makeBlockChange(sx, sy + i, sz, B_air);
+    makeBlockChange(sx, sy, sz, B_stone);
+    makeBlockChange(sx, sy + 1, sz, B_dirt);
+    makeBlockChange(sx, sy + 2, sz, B_sand);
+    makeBlockChange(sx, sy + 3, sz, B_sand);
+    CHECK(getBlockAt(sx, sy + 2, sz) == B_sand, "sand on dirt stays put");
+    hold(0, 0);
+    handlePlayerAction(p, 2, sx, sy + 1, sz);
+    CHECK(getBlockAt(sx, sy + 1, sz) == B_sand && getBlockAt(sx, sy + 2, sz) == B_sand, "sand stack drops onto the next solid block");
+    CHECK(getBlockAt(sx, sy + 3, sz) == B_air, "no sand left floating");
+  }
+
   // ---- save/load roundtrip ----
   makeBlockChange(10, 70, 10, B_gold_block);
   makeBlockChange(-11, 71, 12, BMIN_oak_door + OFF_door[2][1][1]);

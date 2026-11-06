@@ -235,3 +235,6 @@ The real firmware image (16 MB flash, 8 MB PSRAM, LittleFS save partition) now b
 - Inventory, position and health are copied to a small file (`players.bin`, about 3.5 KB) every 60 seconds while players are online, and whenever a player leaves. Before, they were only saved every 30 minutes or when the last player left, so a power cut lost up to 30 minutes of inventory. The big world file is not touched, so this does not bring back the old saving lag. The file is written to a temporary name and renamed, so a power cut never leaves half a file.
 - Bed respawn points are saved in `beds.bin` and survive restarts.
 - Tested on the PC (tests/test_save.c) and on the real firmware image in the emulator (tests/emu/test_player_data.py).
+
+## Falling sand
+Sand (and gravel/red sand where present) no longer breaks when its support is removed; the whole stack lands on the next solid block immediately.
