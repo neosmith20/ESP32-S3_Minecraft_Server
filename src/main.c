@@ -343,8 +343,9 @@ void handlePacket (int client_fd, int length, int packet_id, int state) {
         player->visited_z[VISITED_HISTORY - 1] = _z;
 
         uint32_t r = fast_rand();
-        // One in every 4 new chunks spawns a mob
-        if ((r & 3) == 0) {
+        // One in every 4 new chunks spawns a mob, as long as a few mob
+        // slots stay free for baby animals
+        if ((r & 3) == 0 && countFreeMobSlots() > 4) {
           // The mob is placed in the middle of the new chunk row,
           // at a random position within the chunk
           short mob_x = (_x + dx * VIEW_DISTANCE) * 16 + ((r >> 4) & 15);

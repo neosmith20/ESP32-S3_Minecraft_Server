@@ -467,6 +467,28 @@ void broadcastPlayerMetadata (PlayerData *player) {
   }
 }
 
+// Animal state (see MobData). Only these four mobs can be lured and bred.
+#define MOB_BABY 1
+#define MOB_IN_LOVE 2
+#define BABY_GROW_SECONDS 1200
+#define BREED_COOLDOWN_SECONDS 300
+#define LOVE_SECONDS 30
+#define LURE_DISTANCE 10
+
+static uint8_t isAnimalMob (uint8_t type) {
+  return type == 25 || type == 28 || type == 95 || type == 106;
+}
+
+// The food that makes each animal follow a player and breed
+static uint8_t isAnimalFood (uint8_t type, uint16_t item) {
+  switch (type) {
+    case 28: case 106: return item == I_wheat;
+    case 95: return item == I_carrot || item == I_potato;
+    case 25: return item == I_wheat_seeds;
+    default: return 0;
+  }
+}
+
 // Sends a mob's entity metadata to the given player.
 // If client_fd is -1, broadcasts to all player
 void broadcastMobMetadata (int client_fd, int entity_id) {
@@ -475,26 +497,18 @@ void broadcastMobMetadata (int client_fd, int entity_id) {
   if (mob_index < 0 || mob_index >= MAX_MOBS) return;
   MobData *mob = &mob_data[mob_index];
 
-  EntityData *metadata;
-  size_t length;
+  EntityData metadata[2];
+  size_t length = 0;
 
-  switch (mob->type) {
-    case 106: // Sheep
-      if (!((mob->data >> 5) & 1)) // Don't send metadata if sheep isn't sheared
-        return;
-
-      metadata = malloc(sizeof *metadata);
-      metadata[0] = (EntityData){
-        17,                // Index (Sheep Bit Mask),
-        0,                 // Type (Byte),
-        { (uint8_t)0x10 }, // Value
-      };
-      length = 1;
-
-      break;
-
-    default: return;
+  // Baby animals are shown small
+  if ((mob->flags & MOB_BABY) && isAnimalMob(mob->type)) {
+    metadata[length ++] = (EntityData){ 16, 8, { (uint8_t)1 } };
   }
+  // Sheared sheep
+  if (mob->type == 106 && ((mob->data >> 5) & 1)) {
+    metadata[length ++] = (EntityData){ 17, 0, { (uint8_t)0x10 } };
+  }
+  if (length == 0) return;
 
   if (client_fd == -1) {
     for (int i = 0; i < MAX_PLAYERS; i ++) {
@@ -509,8 +523,6 @@ void broadcastMobMetadata (int client_fd, int entity_id) {
   } else {
     sc_setEntityMetadata(client_fd, entity_id, metadata, length);
   }
-
-  free(metadata);
 }
 
 /**
@@ -1854,7 +1866,7 @@ void handlePlayerUseItem (PlayerData *player, short x, short y, short z, uint8_t
 
 }
 
-void spawnMob (uint8_t type, short x, uint8_t y, short z, uint8_t health) {
+int spawnMob (uint8_t type, short x, uint8_t y, short z, uint8_t health) {
 
   for (int i = 0; i < MAX_MOBS; i ++) {
     // Look for type 0 (unallocated)
@@ -1866,6 +1878,9 @@ void spawnMob (uint8_t type, short x, uint8_t y, short z, uint8_t health) {
     mob_data[i].y = y;
     mob_data[i].z = z;
     mob_data[i].data = health & 31;
+    mob_data[i].flags = 0;
+    mob_data[i].love = 0;
+    mob_data[i].timer = 0;
 
     // Forge a UUID from a random number and the mob's index
     uint8_t uuid[16];
@@ -1890,7 +1905,150 @@ void spawnMob (uint8_t type, short x, uint8_t y, short z, uint8_t health) {
     // If this changes, uncomment this line.
     // broadcastMobMetadata(-1, i);
 
-    break;
+    return i;
+  }
+
+  return -1;
+
+}
+
+// How many mob slots are free
+int countFreeMobSlots () {
+  int free_slots = 0;
+  for (int i = 0; i < MAX_MOBS; i ++) if (mob_data[i].type == 0) free_slots ++;
+  return free_slots;
+}
+
+static uint8_t animalHealth (uint8_t type) {
+  switch (type) {
+    case 25: return 4;
+    case 106: return 8;
+    default: return 10;
+  }
+}
+
+// Shows or hides the "baby" look of an animal on all clients
+static void broadcastBabyState (int entity_id, uint8_t baby) {
+  EntityData metadata = { 16, 8, { baby } };
+  for (int i = 0; i < MAX_PLAYERS; i ++) {
+    if (player_data[i].client_fd == -1) continue;
+    if (player_data[i].flags & 0x20) continue;
+    sc_setEntityMetadata(player_data[i].client_fd, entity_id, &metadata, 1);
+  }
+}
+
+// Spawns love hearts above an animal on all clients
+static void broadcastHearts (int entity_id) {
+  for (int i = 0; i < MAX_PLAYERS; i ++) {
+    if (player_data[i].client_fd == -1) continue;
+    if (player_data[i].flags & 0x20) continue;
+    sc_entityEvent(player_data[i].client_fd, entity_id, 18);
+  }
+}
+
+// Feeds an animal with the item in the player's hand. Returns true if the
+// food was used: an adult goes "in love" (and breeds with another animal in
+// love nearby), a baby grows up faster.
+static uint8_t feedAnimal (PlayerData *player, int mob_index) {
+
+  MobData *mob = &mob_data[mob_index];
+  if ((mob->data & 31) == 0) return false;
+
+  if (mob->flags & MOB_BABY) {
+    // Each feeding takes a tenth off the time left
+    uint16_t cut = mob->timer / 10;
+    if (cut < 1) cut = 1;
+    mob->timer = mob->timer > cut ? mob->timer - cut : 1;
+  } else {
+    if (mob->timer > 0 || (mob->flags & MOB_IN_LOVE)) return false;
+    mob->flags |= MOB_IN_LOVE;
+    mob->love = LOVE_SECONDS;
+    broadcastHearts(-2 - mob_index);
+  }
+
+  uint8_t *count = &player->inventory_count[player->hotbar];
+  uint16_t *item = &player->inventory_items[player->hotbar];
+  *count -= 1;
+  if (*count == 0) *item = 0;
+  sc_setContainerSlot(player->client_fd, 0, serverSlotToClientSlot(0, player->hotbar), *count, *item);
+  return true;
+
+}
+
+// Looks for what an animal wants to walk to: a partner in love, or a player
+// holding its food. Returns 0 for nothing, 1 to walk to (*tx, *tz), and
+// 2 to stand still because it has arrived.
+static uint8_t getAnimalTarget (int mob_index, short *tx, short *tz) {
+
+  MobData *mob = &mob_data[mob_index];
+
+  if ((mob->flags & MOB_IN_LOVE) && !(mob->flags & MOB_BABY)) {
+    for (int j = 0; j < MAX_MOBS; j ++) {
+      if (j == mob_index) continue;
+      MobData *other = &mob_data[j];
+      if (other->type != mob->type || (other->data & 31) == 0) continue;
+      if (!(other->flags & MOB_IN_LOVE) || (other->flags & MOB_BABY)) continue;
+      int dist = abs(other->x - mob->x) + abs(other->z - mob->z);
+      if (dist > 16 || abs((int)other->y - (int)mob->y) > 3) continue;
+      if (dist <= 2) return 2;
+      *tx = other->x; *tz = other->z;
+      return 1;
+    }
+  }
+
+  for (int j = 0; j < MAX_PLAYERS; j ++) {
+    PlayerData *player = &player_data[j];
+    if (player->client_fd == -1 || (player->flags & 0x20)) continue;
+    if (!isAnimalFood(mob->type, player->inventory_items[player->hotbar]) || player->inventory_count[player->hotbar] == 0) continue;
+    int dist = abs(player->x - mob->x) + abs(player->z - mob->z);
+    if (dist > LURE_DISTANCE || abs((int)player->y - (int)mob->y) > 3) continue;
+    if (dist <= 2) return 2;
+    *tx = player->x; *tz = player->z;
+    return 1;
+  }
+
+  return 0;
+
+}
+
+// Runs the animal timers for one second: love running out, babies growing up,
+// breeding cooldowns, and new babies when two animals in love meet.
+void tickAnimals () {
+
+  for (int i = 0; i < MAX_MOBS; i ++) {
+    MobData *mob = &mob_data[i];
+    if (!isAnimalMob(mob->type) || (mob->data & 31) == 0) continue;
+
+    if (mob->love > 0 && --mob->love == 0) mob->flags &= ~MOB_IN_LOVE;
+
+    if (mob->timer > 0 && --mob->timer == 0 && (mob->flags & MOB_BABY)) {
+      mob->flags &= ~MOB_BABY;
+      broadcastBabyState(-2 - i, false);
+    }
+
+    // Two adults in love, standing next to each other, make a baby
+    if (!(mob->flags & MOB_IN_LOVE) || (mob->flags & MOB_BABY)) continue;
+    for (int j = i + 1; j < MAX_MOBS; j ++) {
+      MobData *other = &mob_data[j];
+      if (other->type != mob->type || (other->data & 31) == 0) continue;
+      if (!(other->flags & MOB_IN_LOVE) || (other->flags & MOB_BABY)) continue;
+      if (abs(other->x - mob->x) + abs(other->z - mob->z) > 2) continue;
+      if (abs((int)other->y - (int)mob->y) > 1) continue;
+
+      mob->flags &= ~MOB_IN_LOVE; mob->love = 0; mob->timer = BREED_COOLDOWN_SECONDS;
+      other->flags &= ~MOB_IN_LOVE; other->love = 0; other->timer = BREED_COOLDOWN_SECONDS;
+      broadcastHearts(-2 - i);
+      broadcastHearts(-2 - j);
+
+      // The baby appears where the parents are (if there is room for it)
+      int baby = spawnMob(mob->type, mob->x, mob->y, mob->z, animalHealth(mob->type));
+      if (baby >= 0) {
+        mob_data[baby].flags = MOB_BABY;
+        mob_data[baby].timer = BABY_GROW_SECONDS;
+        broadcastMobMetadata(-1, -2 - baby);
+      }
+      break;
+    }
   }
 
 }
@@ -1903,6 +2061,15 @@ void interactEntity (int entity_id, int interactor_id) {
   int mob_index = -entity_id - 2;
   if (mob_index < 0 || mob_index >= MAX_MOBS) return;
   MobData *mob = &mob_data[mob_index];
+
+  // Feeding an animal its favourite food
+  if (
+    isAnimalMob(mob->type) && player->inventory_count[player->hotbar] > 0 &&
+    isAnimalFood(mob->type, player->inventory_items[player->hotbar])
+  ) {
+    feedAnimal(player, mob_index);
+    return;
+  }
 
   switch (mob->type) {
     case 106: // Sheep
@@ -2053,7 +2220,7 @@ void hurtEntity (int entity_id, int attacker_id, uint8_t damage_type, uint8_t da
       entity_died = true;
 
       // Handle mob drops
-      if (attacker_id > 0) {
+      if (attacker_id > 0 && !(mob->flags & MOB_BABY)) {
         PlayerData *player;
         if (getPlayerData(attacker_id, &player)) return;
         switch (mob->type) {
@@ -2446,6 +2613,9 @@ void handleServerTick (int64_t time_since_last_tick) {
    */
   if (rng_seed == 0) rng_seed = world_seed;
 
+  // Animal timers: love, growing up, breeding
+  if (server_ticks % (uint32_t)TICKS_PER_SECOND == 0) tickAnimals();
+
   // Tick mob behavior
   for (int i = 0; i < MAX_MOBS; i ++) {
     if (mob_data[i].type == 0) continue;
@@ -2485,8 +2655,17 @@ void handleServerTick (int64_t time_since_last_tick) {
 
     uint32_t r = fast_rand();
 
+    // Animals walk towards a partner in love or a player holding their food
+    short animal_tx = 0, animal_tz = 0;
+    uint8_t animal_goal = (passive && !panic) ? getAnimalTarget(i, &animal_tx, &animal_tz) : 0;
+
     if (passive) {
-      if (panic) {
+      if (animal_goal != 0) {
+        // Follow once per second
+        if (server_ticks % (uint32_t)TICKS_PER_SECOND != 0) continue;
+        // Arrived: stay put
+        if (animal_goal == 2) continue;
+      } else if (panic) {
         // If panicking, move randomly at up to 4 times per second
         if (TICKS_PER_SECOND >= 4) {
           uint32_t ticks_per_panic = (uint32_t)(TICKS_PER_SECOND / 4);
@@ -2533,7 +2712,24 @@ void handleServerTick (int64_t time_since_last_tick) {
     short new_x = old_x, new_z = old_z;
     uint8_t new_y = old_y, yaw = 0;
 
-    if (passive) { // Passive mob movement handling
+    if (passive && animal_goal == 1) { // Walking towards food or a partner
+
+      // Same 8-direction stepping as hostile mobs use
+      if (animal_tx < old_x) {
+        new_x -= 1; yaw = 64;
+        if (animal_tz < old_z) { new_z -= 1; yaw += 32; }
+        else if (animal_tz > old_z) { new_z += 1; yaw -= 32; }
+      }
+      else if (animal_tx > old_x) {
+        new_x += 1; yaw = 192;
+        if (animal_tz < old_z) { new_z -= 1; yaw -= 32; }
+        else if (animal_tz > old_z) { new_z += 1; yaw += 32; }
+      } else {
+        if (animal_tz < old_z) { new_z -= 1; yaw = 128; }
+        else if (animal_tz > old_z) { new_z += 1; yaw = 0; }
+      }
+
+    } else if (passive) { // Passive mob movement handling
 
       // Move by one block on the X or Z axis
       // Yaw is set to face in the direction of motion
@@ -2710,6 +2906,8 @@ ssize_t writeEntityData (int client_fd, EntityData *data) {
   switch (data->type) {
     case 0: // Byte
       return writeByte(client_fd, data->value.byte);
+    case 8: // Boolean
+      return writeByte(client_fd, data->value.byte ? 1 : 0);
     case 21: // Pose
       writeVarInt(client_fd, data->value.pose);
       return 0;
@@ -2724,6 +2922,9 @@ int sizeEntityData (EntityData *data) {
 
   switch (data->type) {
     case 0: // Byte
+      value_size = 1;
+      break;
+    case 8: // Boolean
       value_size = 1;
       break;
     case 21: // Pose

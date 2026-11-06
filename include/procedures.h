@@ -47,7 +47,9 @@ void handlePlayerUseItem (PlayerData *player, short x, short y, short z, uint8_t
 
 void checkFluidUpdate (short x, uint8_t y, short z, uint16_t block);
 
-void spawnMob (uint8_t type, short x, uint8_t y, short z, uint8_t health);
+int spawnMob (uint8_t type, short x, uint8_t y, short z, uint8_t health);
+void tickAnimals ();
+int countFreeMobSlots ();
 void interactEntity (int entity_id, int interactor_id);
 void hurtEntity (int entity_id, int attacker_id, uint8_t damage_type, uint8_t damage);
 void tickFarming (uint32_t speed);

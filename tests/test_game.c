@@ -461,6 +461,69 @@ int main (void) {
     CHECK(st.burn_left > 0, "the fire keeps burning without material");
   }
 
+  // ---- animals: luring, breeding, growing up ----
+  {
+    clearArea();
+    for (int i = 0; i < MAX_MOBS; i ++) mob_data[i].type = 0;
+    p->x = X; p->z = Z; p->y = gy + 1; p->flags = 0;
+    int a = spawnMob(28, X + 5, gy + 1, Z + 5, 10);
+    CHECK(a >= 0, "a cow spawns");
+    // a cow follows a player holding wheat
+    hold(I_wheat, 6);
+    int before = abs(mob_data[a].x - X) + abs(mob_data[a].z - Z);
+    for (int t = 0; t < 3; t ++) handleServerTick(1000000);
+    int after = abs(mob_data[a].x - X) + abs(mob_data[a].z - Z);
+    CHECK(after < before, "a cow walks towards a player holding wheat");
+    // and stops when it arrives
+    for (int t = 0; t < 8; t ++) handleServerTick(1000000);
+    CHECK(abs(mob_data[a].x - X) + abs(mob_data[a].z - Z) <= 2, "the cow stops next to the player");
+    // a pig is not interested in wheat
+    int pig = spawnMob(95, X + 5, gy + 1, Z + 5, 10);
+    int px0 = mob_data[pig].x, pz0 = mob_data[pig].z;
+    mob_data[a].type = 0;
+    for (int t = 0; t < 3; t ++) handleServerTick(1000000);
+    CHECK(abs(mob_data[pig].x - px0) + abs(mob_data[pig].z - pz0) <= 3, "a pig doesn't follow wheat");
+    mob_data[pig].type = 0;
+
+    // breeding
+    int c1 = spawnMob(28, X + 1, gy + 1, Z, 10);
+    int c2 = spawnMob(28, X + 2, gy + 1, Z, 10);
+    hold(I_wheat, 3);
+    interactEntity(-2 - c1, p->client_fd);
+    CHECK((mob_data[c1].flags & 2) && p->inventory_count[0] == 2, "feeding wheat puts a cow in love and uses one wheat");
+    interactEntity(-2 - c1, p->client_fd);
+    CHECK(p->inventory_count[0] == 2, "a cow already in love isn't fed again");
+    interactEntity(-2 - c2, p->client_fd);
+    CHECK((mob_data[c2].flags & 2) && p->inventory_count[0] == 1, "the second cow is fed");
+    int cows_before = 0; for (int i = 0; i < MAX_MOBS; i ++) if (mob_data[i].type == 28) cows_before ++;
+    tickAnimals();
+    int cows_after = 0, baby = -1; for (int i = 0; i < MAX_MOBS; i ++) if (mob_data[i].type == 28) { cows_after ++; if (mob_data[i].flags & 1) baby = i; }
+    CHECK(cows_after == cows_before + 1 && baby >= 0, "two cows in love make a baby");
+    CHECK(!(mob_data[c1].flags & 2) && mob_data[c1].timer == 300, "the parents rest for 5 minutes");
+    CHECK(mob_data[baby].timer == 1200, "a baby needs 20 minutes to grow up");
+    interactEntity(-2 - c1, p->client_fd);
+    CHECK(p->inventory_count[0] == 1, "parents can't breed again right away");
+    // love runs out
+    hold(I_wheat, 2);
+    mob_data[c1].timer = 0; mob_data[c2].timer = 0;
+    interactEntity(-2 - c1, p->client_fd);
+    for (int t = 0; t < 31; t ++) { mob_data[c2].flags &= ~2; tickAnimals(); }
+    CHECK(!(mob_data[c1].flags & 2), "love wears off after 30 seconds");
+    // babies grow up
+    mob_data[baby].timer = 1200;
+    hold(I_wheat, 2);
+    interactEntity(-2 - baby, p->client_fd);
+    CHECK(mob_data[baby].timer == 1080 && p->inventory_count[0] == 1, "feeding a baby speeds up its growth");
+    for (int t = 0; t < 1080; t ++) tickAnimals();
+    CHECK(!(mob_data[baby].flags & 1), "the baby becomes an adult");
+    // a full world makes no baby, but nothing breaks
+    for (int i = 0; i < MAX_MOBS; i ++) if (mob_data[i].type == 0) { mob_data[i].type = 145; mob_data[i].data = 20; }
+    mob_data[c1].timer = 0; mob_data[c2].timer = 0; mob_data[c1].flags |= 2; mob_data[c2].flags |= 2; mob_data[c1].love = 30; mob_data[c2].love = 30;
+    tickAnimals();
+    CHECK(countFreeMobSlots() == 0, "no baby when all mob slots are used");
+    for (int i = 0; i < MAX_MOBS; i ++) mob_data[i].type = 0;
+  }
+
   // ---- mobs can't hit through blocks ----
   clearArea();
   CHECK(mobCanReachPlayer(X, gy + 1, Z, X + 2, gy + 1, Z), "a mob can hit across open air");

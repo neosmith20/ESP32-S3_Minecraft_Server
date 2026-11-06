@@ -328,6 +328,13 @@ typedef struct {
   // Middle 1 bit: sheep sheared, unused for other mobs
   // Upper 2 bits: panic timer
   uint8_t data;
+  // Animals only: bit 0 = baby, bit 1 = in love (ready to breed)
+  uint8_t flags;
+  // Animals only: seconds of love left (breeding window)
+  uint8_t love;
+  // Animals only: a baby's seconds until it is grown up, or an adult's
+  // seconds until it can breed again
+  uint16_t timer;
 } MobData;
 
 #pragma pack(pop)
@@ -340,6 +347,7 @@ union EntityDataValue {
 typedef struct {
   uint8_t index;
   // 0 - Byte
+  // 8 - Boolean
   // 21 - Pose
   int type;
   union EntityDataValue value;
