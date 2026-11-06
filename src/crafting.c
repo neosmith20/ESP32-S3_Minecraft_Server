@@ -106,77 +106,81 @@ static uint8_t getFuelUnits (uint16_t fuel) {
   }
 }
 
-void getSmeltingOutput (PlayerData *player) {
+// What a smelting material turns into, or 0 if it can't be smelted
+uint16_t getSmeltingResult (uint16_t material) {
+  if (material == I_cobblestone) return I_stone;
+  if (material == I_oak_log) return I_charcoal;
+  if (material == I_oak_wood) return I_charcoal;
+  if (material == I_raw_iron) return I_iron_ingot;
+  if (material == I_raw_gold) return I_gold_ingot;
+  if (material == I_sand) return I_glass;
+  if (material == I_raw_copper) return I_copper_ingot;
+  if (material == I_stone) return I_smooth_stone;
+  if (material == I_sandstone) return I_smooth_sandstone;
+  if (material == I_stone_bricks) return I_cracked_stone_bricks;
+  if (material == I_chicken) return I_cooked_chicken;
+  if (material == I_beef) return I_cooked_beef;
+  if (material == I_porkchop) return I_cooked_porkchop;
+  if (material == I_mutton) return I_cooked_mutton;
+  if (material == I_potato) return I_baked_potato;
+  return 0;
+}
 
-  uint8_t *material_count = &player->craft_count[0];
-  uint8_t *fuel_count = &player->craft_count[1];
+// Runs a furnace for one second. Smelting one item takes FURNACE_SMELT_SECONDS
+// seconds of heat; a fuel item burns for getFuelUnits() * 5 seconds, so a plank
+// (3 units) lasts 15 seconds and smelts 1.5 items, like in the real game.
+// A fuel item is only used up when there is something to smelt, and the fire
+// keeps burning for the rest of its time even if the material runs out.
+// The furnace slots are the first three crafting slots of the player:
+// 0 = material, 1 = fuel, 2 = output. Returns true if any slot changed.
+uint8_t tickFurnace (PlayerData *player, FurnaceState *state) {
+
+  uint8_t changed = false;
 
   uint16_t *material = &player->craft_items[0];
+  uint8_t *material_count = &player->craft_count[0];
   uint16_t *fuel = &player->craft_items[1];
-
-  // Don't process without material, or without fuel (heat left over from
-  // earlier fuel still counts)
-  if (*material_count == 0 || *material == 0) return;
-  if ((*fuel_count == 0 || *fuel == 0) && player->craft_count[3] < 2) return;
-
-  // Furnace output is 3rd crafting table slot
+  uint8_t *fuel_count = &player->craft_count[1];
+  uint16_t *output = &player->craft_items[2];
   uint8_t *output_count = &player->craft_count[2];
-  uint16_t *output_item = &player->craft_items[2];
 
-  // Work out which smelting recipe applies (without changing anything yet)
-  uint16_t result = 0;
-  if (*material == I_cobblestone) result = I_stone;
-  else if (*material == I_oak_log) result = I_charcoal;
-  else if (*material == I_oak_wood) result = I_charcoal;
-  else if (*material == I_raw_iron) result = I_iron_ingot;
-  else if (*material == I_raw_gold) result = I_gold_ingot;
-  else if (*material == I_sand) result = I_glass;
-  else if (*material == I_raw_copper) result = I_copper_ingot;
-  else if (*material == I_stone) result = I_smooth_stone;
-  else if (*material == I_sandstone) result = I_smooth_sandstone;
-  else if (*material == I_stone_bricks) result = I_cracked_stone_bricks;
-  else if (*material == I_chicken) result = I_cooked_chicken;
-  else if (*material == I_beef) result = I_cooked_beef;
-  else if (*material == I_porkchop) result = I_cooked_porkchop;
-  else if (*material == I_mutton) result = I_cooked_mutton;
-  else if (*material == I_potato) result = I_baked_potato;
-  else return;
-  if (*output_item != 0 && *output_item != result) return;
+  uint16_t result = (*material_count > 0 && *material != 0) ? getSmeltingResult(*material) : 0;
+  uint8_t can_smelt = result != 0 && (*output_count == 0 || (*output == result && *output_count < 64));
 
-  // Fuel is measured in half items: smelting one item takes 2 units, and
-  // whatever is left over from the last fuel item carries over to the next
-  // item, like the burn time of a real furnace. The leftover is kept in the
-  // (otherwise unused) fourth crafting slot's count.
-  uint8_t *leftover = &player->craft_count[3];
-
-  while (*material_count > 0 && *output_count < 64) {
-
-    if (*leftover < 2) {
-      // Burn another fuel item
-      if (*fuel == 0 || *fuel_count == 0) break;
-      uint8_t fuel_units = getFuelUnits(*fuel);
-      if (fuel_units == 0) break;
-      *leftover += fuel_units;
-      // A lava bucket leaves an empty bucket behind
+  // Light the furnace with a new fuel item when there is work to do
+  if (can_smelt && state->burn_left == 0 && *fuel_count > 0 && *fuel != 0) {
+    uint8_t units = getFuelUnits(*fuel);
+    if (units != 0) {
+      state->burn_left = units * 5;
+      state->burn_total = state->burn_left;
       if (*fuel == I_lava_bucket) {
-        *fuel = I_bucket;
+        *fuel = I_bucket; // a lava bucket leaves an empty bucket behind
       } else {
         *fuel_count -= 1;
         if (*fuel_count == 0) *fuel = 0;
       }
-      continue;
+      changed = true;
     }
-
-    uint8_t n = *leftover / 2;
-    if (n > *material_count) n = *material_count;
-    if (n > 64 - *output_count) n = 64 - *output_count;
-    *output_item = result;
-    *output_count += n;
-    *material_count -= n;
-    *leftover -= 2 * n;
-
   }
 
-  if (*material_count == 0) *material = 0;
+  uint8_t lit = state->burn_left > 0;
+  if (lit) state->burn_left --;
+
+  if (can_smelt && lit) {
+    state->progress ++;
+    if (state->progress >= FURNACE_SMELT_SECONDS) {
+      state->progress = 0;
+      *output = result;
+      *output_count += 1;
+      *material_count -= 1;
+      if (*material_count == 0) *material = 0;
+      changed = true;
+    }
+  } else if (state->progress > 0) {
+    // Without heat or material the progress arrow runs backwards
+    state->progress = can_smelt ? (state->progress >= 2 ? state->progress - 2 : 0) : 0;
+  }
+
+  return changed;
 
 }

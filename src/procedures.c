@@ -17,6 +17,7 @@
 #include "structures.h"
 #include "serialize.h"
 #include "procedures.h"
+#include "crafting.h"
 
 int client_states[MAX_PLAYERS * 2];
 
@@ -385,6 +386,7 @@ void spawnPlayer (PlayerData *player) {
     player->craft_count[i] = 0;
   }
   player->flags &= ~0x80;
+  furnaceReset(player);
 
   // Sync client inventory and hotbar
   for (uint8_t i = 0; i < 41; i ++) {
@@ -1646,6 +1648,7 @@ void handlePlayerUseItem (PlayerData *player, short x, short y, short z, uint8_t
       return;
     } else if (IS_BLOCK(target, furnace)) {
       sc_openScreen(player->client_fd, 14, "Furnace", 7);
+      furnaceOpened(player);
       return;
     } else if (toggleOpenable(x, y, z, target)) {
       return;
@@ -2214,6 +2217,62 @@ uint8_t mobCanReachPlayer (short mx, uint8_t my, short mz, short px, uint8_t py,
 
 }
 
+// Furnaces only work while a player has one open (the items live in the
+// player's crafting slots and go back to the inventory when the window closes).
+// The heat and progress are kept in memory, per player.
+static FurnaceState furnace_state[MAX_PLAYERS];
+static uint8_t furnace_open[MAX_PLAYERS];
+
+static int furnaceIndex (PlayerData *player) {
+  int index = (int)(player - player_data);
+  return (index < 0 || index >= MAX_PLAYERS) ? -1 : index;
+}
+
+// Sends the flame and arrow state to the furnace window
+static void sendFurnaceProperties (PlayerData *player, FurnaceState *state) {
+  // The client counts in game ticks (20 per second)
+  sc_setContainerProperty(player->client_fd, 14, 0, state->burn_left * 20);
+  sc_setContainerProperty(player->client_fd, 14, 1, state->burn_total * 20);
+  sc_setContainerProperty(player->client_fd, 14, 2, state->progress * 20);
+  sc_setContainerProperty(player->client_fd, 14, 3, FURNACE_SMELT_SECONDS * 20);
+}
+
+void furnaceOpened (PlayerData *player) {
+  int index = furnaceIndex(player);
+  if (index < 0) return;
+  furnace_open[index] = true;
+  sendFurnaceProperties(player, &furnace_state[index]);
+}
+
+void furnaceClosed (PlayerData *player) {
+  int index = furnaceIndex(player);
+  if (index < 0) return;
+  furnace_open[index] = false;
+}
+
+// Forgets any heat left over from a previous visit
+void furnaceReset (PlayerData *player) {
+  int index = furnaceIndex(player);
+  if (index < 0) return;
+  furnace_open[index] = false;
+  memset(&furnace_state[index], 0, sizeof(FurnaceState));
+}
+
+// Runs every furnace that is open for one second
+void tickFurnaces () {
+  for (int i = 0; i < MAX_PLAYERS; i ++) {
+    PlayerData *player = &player_data[i];
+    if (player->client_fd == -1 || !furnace_open[i]) continue;
+    uint8_t changed = tickFurnace(player, &furnace_state[i]);
+    if (changed) {
+      for (int j = 0; j < 3; j ++) {
+        sc_setContainerSlot(player->client_fd, 14, j, player->craft_count[j], player->craft_items[j]);
+      }
+    }
+    sendFurnaceProperties(player, &furnace_state[i]);
+  }
+}
+
 // Grows crops and keeps farmland wet or dries it out. Called every few
 // seconds. Only a limited number of plants is looked at per call, so big farms
 // grow a little slower rather than stalling the server. `speed` multiplies
@@ -2303,6 +2362,8 @@ void handleServerTick (int64_t time_since_last_tick) {
 
   // Grow crops every 5 seconds
   if (server_ticks % (uint32_t)(5 * TICKS_PER_SECOND) == 0) tickFarming(1);
+  // Smelt items in open furnaces, once per second
+  if (server_ticks % (uint32_t)TICKS_PER_SECOND == 0) tickFurnaces();
 
   // Update player events
   for (int i = 0; i < MAX_PLAYERS; i ++) {

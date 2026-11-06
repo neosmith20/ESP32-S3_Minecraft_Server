@@ -588,6 +588,16 @@ int sc_setContainerSlot (int client_fd, int window_id, uint16_t slot, uint8_t co
 
 }
 
+// S->C Set Container Property (furnace flame and arrow, for example)
+int sc_setContainerProperty (int client_fd, uint8_t window_id, int16_t property, int16_t value) {
+  writeVarInt(client_fd, 1 + 1 + 2 + 2);
+  writeByte(client_fd, 0x13);
+  writeByte(client_fd, window_id);
+  writeUint16(client_fd, (uint16_t)property);
+  writeUint16(client_fd, (uint16_t)value);
+  return 0;
+}
+
 // S->C Block Update
 int sc_blockUpdate (int client_fd, int64_t x, int64_t y, int64_t z, uint16_t block) {
   writeVarInt(client_fd, 9 + sizeVarInt(block));
@@ -808,7 +818,7 @@ int cs_clickContainer (int client_fd) {
     getCraftingOutput(player, &count, &item);
     sc_setContainerSlot(client_fd, window_id, 0, count, item);
   } else if (window_id == 14) { // furnace
-    getSmeltingOutput(player);
+    // Smelting itself happens over time (see tickFurnaces), so just show what is there
     for (int i = 0; i < 3; i ++) {
       sc_setContainerSlot(client_fd, window_id, i, player->craft_count[i], player->craft_items[i]);
     }
@@ -966,6 +976,8 @@ int cs_closeContainer (int client_fd) {
 
   PlayerData *player;
   if (getPlayerData(client_fd, &player)) return 1;
+
+  furnaceClosed(player);
 
   // return all items in crafting slots to the player
   // or, in the case of chests, simply clear the storage pointer

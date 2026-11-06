@@ -42,6 +42,7 @@ int sc_keepAlive (int client_fd);
 int sc_setContainerSlot (int client_fd, int window_id, uint16_t slot, uint8_t count, uint16_t item);
 int sc_setCursorItem (int client_fd, uint16_t item, uint8_t count);
 int sc_setHeldItem (int client_fd, uint8_t slot);
+int sc_setContainerProperty (int client_fd, uint8_t window_id, int16_t property, int16_t value);
 int sc_blockUpdate (int client_fd, int64_t x, int64_t y, int64_t z, uint16_t block);
 int sc_openScreen (int client_fd, uint8_t window, const char *title, uint16_t length);
 int sc_acknowledgeBlockChange (int client_fd, int sequence);
