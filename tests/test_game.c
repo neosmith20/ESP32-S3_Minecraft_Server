@@ -330,6 +330,23 @@ int main (void) {
   // food
   CHECK(1, "farming tests done");
 
+  // ---- tool wear ----
+  clearArea();
+  makeBlockChange(X, gy + 1, Z, B_cobblestone);
+  hold(I_wooden_pickaxe, 1);
+  handlePlayerAction(p, 2, X, gy + 1, Z);
+  CHECK(getBlockAt(X, gy + 1, Z) == B_air, "pickaxe mines cobblestone");
+  for (int i = 0; i < 100; i ++) handlePlayerAction(p, 2, X, gy + 1, Z);
+  CHECK(p->inventory_items[0] == I_wooden_pickaxe, "repeated finish packets on air don't wear the tool");
+  for (int i = 0; i < 57; i ++) {
+    makeBlockChange(X, gy + 1, Z, B_cobblestone);
+    handlePlayerAction(p, 2, X, gy + 1, Z);
+  }
+  CHECK(p->inventory_items[0] == I_wooden_pickaxe, "wooden pickaxe survives 58 blocks");
+  makeBlockChange(X, gy + 1, Z, B_cobblestone);
+  handlePlayerAction(p, 2, X, gy + 1, Z);
+  CHECK(p->inventory_items[0] == 0, "wooden pickaxe breaks on the 59th block");
+
   // ---- buckets ----
   CHECK(craft((uint16_t[9]){ I_iron_ingot, 0, I_iron_ingot,  0, I_iron_ingot, 0,  0, 0, 0 }, &n) == I_bucket, "bucket recipe");
   clearArea();

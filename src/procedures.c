@@ -1491,6 +1491,11 @@ void handlePlayerAction (PlayerData *player, int action, short x, short y, short
     return;
   }
 
+  // Nothing to mine: the block is already gone (the client can send the
+  // finish packet twice) or it is only air or fluid. Without this check, such
+  // packets would wear down the held tool without breaking anything.
+  if (block == B_air || IS_WATER(block) || IS_LAVA(block)) return;
+
   // If this is a "start mining" packet, the block must be instamine
   if (action == 0 && !isInstantlyMined(player, block)) return;
 
