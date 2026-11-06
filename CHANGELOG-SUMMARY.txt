@@ -1,0 +1,66 @@
+ESP32-S3 MINECRAFT SERVER - SUMMARY OF EVERYTHING DONE
+(Minecraft Java 1.21.8, ESP32-S3 N16R8. Credit: based on p2r3's work, GPL-3.0.)
+
+NOTE: "Tested" means PC tests and the emulator. Real save lag, flash timing, WiFi
+and player capacity can only be checked on your physical board.
+
+=== ADDED ===
+- Farming: farmland, wheat, carrots, potatoes, hoes, bread, bone meal on crops.
+- Dry farmland turns back to dirt after about a minute; optional test kit.
+- Buckets: pick up and place water and lava.
+- Furnace smelts over time (10 s per item), fuel burns for real durations and
+  leftover heat carries over, more fuels supported, flame and arrow shown.
+- Animals follow food, breed with wheat/carrots/seeds, babies grow up.
+- Beds: place, sleep to skip the night, respawn point.
+- Ore veins and cave pockets instead of single ore blocks.
+- Grass spreads onto dirt; saplings grow into trees; crops grow over time.
+- Short grass on plains (so wheat seeds can be found).
+- Falling sand/gravel: unsupported stacks drop and land instantly.
+- Player data snapshot (players.bin, every 60 s and on disconnect) and bed
+  respawn file (beds.bin), so inventory/position/beds survive crashes.
+- Emulator test system (tests/emu): boots the real firmware in Espressif's
+  esp-emu with scripted Minecraft clients. Tests: persistence, power-cut
+  crash, gameplay/farming/multiplayer, player data. Runs in GitHub Actions
+  as an advisory job. An emulator build environment (esp32s3-n16r8-emu) was added.
+- Documentation: AUDIT.md, S3-CHANGES.md sections, tests/emu/README.md.
+- Debug chat line "Hit by mob at..." (DEBUG_MOB_HITS) to track the door bug.
+
+=== CHANGED ===
+- Block saving: building now goes to a small journal file every 15 s instead
+  of rewriting world pages (fixes the old flash-saving lag); full save merges it.
+- Block changes saved every few seconds instead of only every 30 minutes.
+- Chest changes are saved.
+- Water buckets leave a new source in lakes and the sea, like the real game.
+- Tools wear out after a fixed number of uses instead of breaking at random.
+- Plant growth speed no longer slows down in big worlds.
+- Build now stops with a clear message if registries.h is out of date.
+
+=== FIXED ===
+- Grass blocks wrongly needing a pickaxe.
+- Mining packets on air/fluid no longer wear tools or hand out items.
+- Mobs hitting players through doors, walls or glass; later made stricter by
+  checking every height between mob and player (door case still awaiting your
+  debug line).
+- Full save sometimes skipping pages.
+- Firmware build error: serialize.c needed string.h.
+- Natural short grass floating after the block under it was dug away.
+- Floating grass tufts at the plains terrain.
+- Furnace fuel handling.
+
+=== REMOVED ===
+- Nothing was removed from the game. Unsupported sand no longer breaks into
+  an item (it falls instead).
+
+=== TESTS ===
+- PC tests (game, chunks, save) all pass; protocol end-to-end test passes in CI.
+- Emulator suite passes in CI. Latest GitHub run: all jobs green.
+- Emulator measurements (NOT the real board): internal RAM min free about
+  176 KB, PSRAM about 3.59 MB free with two players; no crashes or watchdog hits.
+
+=== NOT DONE / OPEN ===
+- Zombie hitting through the door: need your "Hit by mob at..." chat line.
+- Natural-lake water hole: cannot reproduce; may be an old saved hole.
+- Not done: full security review of packet handling, separate performance review.
+- Not feasible on this board: redstone, fire, TNT, XP/enchanting, villagers,
+  Nether/End, skeletons, creepers.
+- Needs your board: save lag, flash timing, WiFi, capacity, tick timing.
