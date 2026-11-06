@@ -80,6 +80,9 @@ jobs:
       - name: Run Minecraft login and chunk-protocol end-to-end test
         run: python3 tests/run_e2e.py .ci-build/host/mcserver_native
 
+      - name: Run abuse test (stalled and hostile connections)
+        run: python3 tests/run_abuse.py .ci-build/host/mcserver_native
+
       - name: Analyze host C using real compiler flags and generated headers
         id: linter
         uses: cpp-linter/cpp-linter-action@v2

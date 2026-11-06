@@ -545,6 +545,7 @@ int main () {
 
   // Initialize all file descriptor references to -1 (unallocated)
   int clients[MAX_PLAYERS], client_index = 0;
+  int64_t partial_since[MAX_PLAYERS] = {0};
   for (int i = 0; i < MAX_PLAYERS; i ++) {
     clients[i] = -1;
     client_states[i * 2] = -1;
@@ -676,7 +677,7 @@ int main () {
     // Look for valid connected clients
     client_index ++;
     if (client_index == MAX_PLAYERS) client_index = 0;
-    if (clients[client_index] == -1) continue;
+    if (clients[client_index] == -1) { partial_since[client_index] = 0; continue; }
 
     // Handle periodic events (server ticks)
     int64_t time_since_last_tick = get_program_time() - last_tick_time;
@@ -768,6 +769,54 @@ int main () {
     }
     #endif
 
+    // Wait until the whole packet has arrived before reading any of it.
+    // Reading blocks (for up to NETWORK_TIMEOUT_TIME) whenever bytes are
+    // missing, so a client that sends half a packet and goes quiet would
+    // otherwise freeze the server for everybody. An incomplete packet is
+    // simply left in the socket and looked at again on the next pass.
+    {
+      // (static: keeps 2 KB off the stack; only this loop uses it)
+      static uint8_t head[MAX_PACKET_SIZE + 5];
+      ssize_t head_n = recv(client_fd, head, sizeof(head), MSG_PEEK);
+      if (head_n < 2) continue;
+      // Legacy server list ping (0xFE 0x01 0xFA): refuse right away
+      if (head_n >= 3 && head[0] == 0xFE && head[1] == 0x01 && head[2] == 0xFA) {
+        disconnectClient(&clients[client_index], 5);
+        continue;
+      }
+      // Decode the length prefix from the peeked bytes
+      uint32_t peek_length = 0;
+      int prefix = 0;
+      uint8_t prefix_done = false;
+      while (prefix < head_n && prefix < 5) {
+        peek_length |= (uint32_t)(head[prefix] & 0x7F) << (7 * prefix);
+        prefix ++;
+        if (!(head[prefix - 1] & 0x80)) { prefix_done = true; break; }
+      }
+      if (!prefix_done && prefix >= 5) {
+        disconnectClient(&clients[client_index], 2); // endless length prefix
+        continue;
+      }
+      uint8_t complete = false;
+      if (prefix_done) {
+        if (peek_length > MAX_PACKET_SIZE) {
+          disconnectClient(&clients[client_index], 2);
+          continue;
+        }
+        complete = (uint32_t)head_n >= (uint32_t)prefix + peek_length;
+      }
+      if (!complete) {
+        // Give slow connections a few seconds, then drop them
+        if (partial_since[client_index] == 0) partial_since[client_index] = get_program_time();
+        else if (get_program_time() - partial_since[client_index] > PARTIAL_PACKET_TIMEOUT) {
+          partial_since[client_index] = 0;
+          disconnectClient(&clients[client_index], 2);
+        }
+        continue;
+      }
+      partial_since[client_index] = 0;
+    }
+
     // Read packet length
     int length = readVarInt(client_fd);
     if (length == VARNUM_ERROR) {
@@ -783,7 +832,7 @@ int main () {
     // A packet is at least as long as its ID, and no real client packet
     // comes anywhere near this size. Refuse the rest instead of trying to
     // skip a negative or gigantic number of bytes.
-    if (length < sizeVarInt(packet_id) || length > 32767) {
+    if (length < sizeVarInt(packet_id) || length > MAX_PACKET_SIZE) {
       disconnectClient(&clients[client_index], 2);
       continue;
     }

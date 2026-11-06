@@ -185,6 +185,12 @@
 // Size of the receive buffer for incoming string data
 #define MAX_RECV_BUF_LEN 256
 
+// Largest serverbound packet the server accepts, in bytes. Real clients stay
+// far below this. Anything bigger is treated as an attack.
+#define MAX_PACKET_SIZE 2048
+// How long a half-received packet may sit in the socket (microseconds)
+#define PARTIAL_PACKET_TIMEOUT 5000000
+
 // If defined, sends the server brand to clients. Doesn't do much, but will
 // show up in the top-left of the F3/debug menu, in the Minecraft client.
 // You can change the brand string in the "brand" variable in src/globals.c
