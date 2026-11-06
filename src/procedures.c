@@ -13,6 +13,9 @@
 #include "registries.h"
 #include <math.h>
 #include "blocks.h"
+#if defined(EMU_TEST_BUILD) && defined(ESP_PLATFORM)
+  #include "esp_heap_caps.h"
+#endif
 #include "worldgen.h"
 #include "structures.h"
 #include "serialize.h"
@@ -2832,6 +2835,23 @@ void handleServerTick (int64_t time_since_last_tick) {
     }
     sc_setHealth(player->client_fd, player->health, player->hunger, player->saturation);
   }
+
+  #if defined(EMU_TEST_BUILD) && defined(ESP_PLATFORM)
+  {
+    // Memory report for the emulator tests (tests/emu): internal RAM and PSRAM
+    static int64_t last_mem_report = 0;
+    int64_t mem_now = get_program_time();
+    if (mem_now - last_mem_report >= 10000000) {
+      last_mem_report = mem_now;
+      printf("MEM internal_free=%u internal_min=%u psram_free=%u psram_min=%u uptime_s=%d\n",
+        (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+        (unsigned)heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL),
+        (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM),
+        (unsigned)heap_caps_get_minimum_free_size(MALLOC_CAP_SPIRAM),
+        (int)(mem_now / 1000000));
+    }
+  }
+  #endif
 
   // Perform regular checks for if it's time to write to disk
   #ifdef DEV_LOG_STALLS

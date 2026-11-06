@@ -219,6 +219,12 @@
 // coal, logs, iron). Remove the two slashes in front of the line to turn it on.
 // #define GIVE_TEST_KIT
 
+// Test builds for the emulator (see tests/emu): give every new player the test
+// kit and print free memory every 10 seconds. Never set this on a real server.
+#ifdef EMU_TEST_BUILD
+  #define GIVE_TEST_KIT
+#endif
+
 // Shows a chat message with positions and the blocks in between whenever a mob
 // hits a player. Used to track down hits that should have been blocked.
 #define DEBUG_MOB_HITS
