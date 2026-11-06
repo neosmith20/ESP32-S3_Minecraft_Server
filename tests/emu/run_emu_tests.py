@@ -13,7 +13,7 @@ import sys
 import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-TESTS = ["test_persistence.py", "test_crash.py", "test_gameplay.py"]
+TESTS = ["test_persistence.py", "test_crash.py", "test_player_data.py", "test_gameplay.py"]
 
 
 def main():

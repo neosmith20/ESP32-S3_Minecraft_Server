@@ -230,3 +230,8 @@ Files: `src/crafting.c`, `src/procedures.c`, `src/packets.c`, `include/globals.h
 
 ## Emulator tests (tests/emu)
 The real firmware image (16 MB flash, 8 MB PSRAM, LittleFS save partition) now boots in Espressif's esp-emu, and a scripted Minecraft client plays it: restart persistence, a power cut with a player online, two players, hoe/seeds/bone meal, free-memory and crash checks. The emulator's speed is not a real board's speed, so save latency still has to be checked on hardware. See tests/emu/README.md.
+
+## Player data and bed spawns survive crashes
+- Inventory, position and health are copied to a small file (`players.bin`, about 3.5 KB) every 60 seconds while players are online, and whenever a player leaves. Before, they were only saved every 30 minutes or when the last player left, so a power cut lost up to 30 minutes of inventory. The big world file is not touched, so this does not bring back the old saving lag. The file is written to a temporary name and renamed, so a power cut never leaves half a file.
+- Bed respawn points are saved in `beds.bin` and survive restarts.
+- Tested on the PC (tests/test_save.c) and on the real firmware image in the emulator (tests/emu/test_player_data.py).

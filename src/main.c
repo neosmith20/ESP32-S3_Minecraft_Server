@@ -526,6 +526,7 @@ int main () {
 
   // Build the block change lookup index from whatever was loaded (if anything)
   rebuildBlockChangeIndex();
+  loadBedSpawns();
 
   // Initialize all file descriptor references to -1 (unallocated)
   int clients[MAX_PLAYERS], client_index = 0;

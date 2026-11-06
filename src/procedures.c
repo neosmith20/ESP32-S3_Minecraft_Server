@@ -235,7 +235,7 @@ void disconnectClient (int *client_fd, int cause) {
   #ifdef DISK_SYNC_BLOCKS_ON_INTERVAL
     // Someone leaving is a good moment to save what has been built so far
     // (a quick journal write; the full save happens when the server is empty)
-    if (was_playing) flushBlockJournal();
+    if (was_playing) { flushBlockJournal(); writePlayerSnapshot(); }
   #endif
   #ifdef _WIN32
   closesocket(*client_fd);
@@ -1613,6 +1613,17 @@ static void sendChat (PlayerData *player, const char *text) {
   sc_systemChat(player->client_fd, (char *)text, strlen(text));
 }
 
+// Respawn points are kept in their own small file so they survive restarts
+void saveBedSpawns () {
+  saveExtraData("beds.bin", bed_spawns, sizeof(bed_spawns));
+}
+
+void loadBedSpawns () {
+  if (loadExtraData("beds.bin", bed_spawns, sizeof(bed_spawns)) != 0) return;
+  bed_spawn_next = 0;
+  for (int i = 0; i < MAX_PLAYERS; i ++) if (bed_spawns[i].valid) bed_spawn_next = (i + 1) % MAX_PLAYERS;
+}
+
 static BedSpawn *findBedSpawn (PlayerData *player, uint8_t create) {
   for (int i = 0; i < MAX_PLAYERS; i ++) {
     if (bed_spawns[i].valid && memcmp(bed_spawns[i].uuid, player->uuid, 16) == 0) return &bed_spawns[i];
@@ -1642,6 +1653,7 @@ void useBed (PlayerData *player, short x, uint8_t y, short z) {
   BedSpawn *spawn = findBedSpawn(player, true);
   spawn->valid = true;
   spawn->x = x; spawn->y = y + 1; spawn->z = z;
+  saveBedSpawns();
 
   if (!isNightTime()) {
     sendChat(player, "Respawn point set. You can only sleep at night.");
@@ -1665,6 +1677,7 @@ uint8_t applyBedSpawn (PlayerData *player) {
   if (spawn == NULL) return false;
   if (getBlockFamily(getBlockAt(spawn->x, spawn->y - 1, spawn->z)) != FAM_BED) {
     spawn->valid = false;
+    saveBedSpawns();
     sendChat(player, "Your bed was missing or blocked.");
     return false;
   }

@@ -23,7 +23,7 @@ static int fileMatchesMemory (void) {
 }
 
 int main (void) {
-  remove("world2.bin"); remove("journal.bin");
+  remove("world2.bin"); remove("journal.bin"); remove("players.bin");
   for (int i = 0; i < MAX_BLOCK_CHANGES; i ++) block_changes[i].block = BLOCK_NONE;
   block_changes_count = 0;
   for (int i = 0; i < MAX_PLAYERS; i ++) { client_states[i * 2] = -1; player_data[i].client_fd = -1; }
@@ -91,6 +91,38 @@ int main (void) {
   for (int i = 0; i < 1500; i ++) makeBlockChange(i, 100, 3000, B_stone);
   flushBlockJournal();
   CHECK(fileMatchesMemory(), "overflow triggers a full save");
+
+  // Player data goes to its own small file, so a restart or power cut keeps the inventory
+  remove("players.bin");
+  memset(player_data, 0, sizeof(player_data));
+  for (int i = 0; i < MAX_PLAYERS; i ++) player_data[i].client_fd = -1;
+  player_data[2].inventory_items[0] = 777; player_data[2].inventory_count[0] = 33;
+  player_data[2].x = 1234; player_data[2].z = -4321; player_data[2].health = 14;
+  writePlayerSnapshot();
+  CHECK(fopen("players.bin", "rb") != NULL, "player snapshot file written");
+  { FILE *pf = fopen("players.bin", "rb"); fseek(pf, 0, SEEK_END); CHECK(ftell(pf) == (long)sizeof(player_data), "snapshot holds exactly the player array (small)"); fclose(pf); }
+  CHECK(fopen("players.bin.tmp", "rb") == NULL, "no temporary file left behind");
+  memset(player_data, 0, sizeof(player_data));
+  for (int i = 0; i < MAX_PLAYERS; i ++) player_data[i].client_fd = -1;
+  CHECK(initSerializer() == 0, "world loads with a player snapshot");
+  CHECK(player_data[2].inventory_items[0] == 777 && player_data[2].inventory_count[0] == 33, "inventory restored from the snapshot");
+  CHECK(player_data[2].x == 1234 && player_data[2].z == -4321 && player_data[2].health == 14, "position and health restored");
+  // A full save puts the data in the world file and drops the snapshot
+  writePlayerDataToDisk();
+  CHECK(fopen("players.bin", "rb") == NULL, "snapshot removed after a full player save");
+  memset(player_data, 0, sizeof(player_data));
+  for (int i = 0; i < MAX_PLAYERS; i ++) player_data[i].client_fd = -1;
+  CHECK(initSerializer() == 0, "world loads again");
+  CHECK(player_data[2].inventory_count[0] == 33, "player data now comes from the world file itself");
+  // unchanged data is not rewritten
+  player_data[1].health = 9;
+  writePlayerSnapshot();
+  remove("players.bin");
+  writePlayerSnapshot();
+  CHECK(fopen("players.bin", "rb") == NULL, "unchanged player data is not written again");
+  player_data[1].health = 8;
+  writePlayerSnapshot();
+  CHECK(fopen("players.bin", "rb") != NULL, "changed player data is written");
 
   printf("\n%s (%d failures)\n", fails ? "SOME TESTS FAILED" : "ALL SAVE TESTS PASSED", fails);
   return fails != 0;

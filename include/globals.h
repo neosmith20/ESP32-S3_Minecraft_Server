@@ -146,6 +146,15 @@
 // on the long backup interval.
 #define BLOCK_SYNC_INTERVAL 15000000
 
+// How often player data (inventory, position, health) is copied to its own
+// small file while players are online. The file is only a few KB, so this is a
+// quick write; the big world file is not touched (that is what froze the server).
+#ifdef EMU_TEST_BUILD
+  #define PLAYER_SNAPSHOT_INTERVAL 20000000
+#else
+  #define PLAYER_SNAPSHOT_INTERVAL 60000000
+#endif
+
 // Whether to sync block changes to disk on an interval, instead of syncing
 // on each change. On systems with fast random disk access, this shouldn't
 // be necessary. Enabled by default on ESP-IDF, where every flash write

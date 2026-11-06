@@ -102,6 +102,8 @@ class Client:
         self.chunks = {}       # (cx, cz) -> {section: states}
         self.block_updates = {}  # (x, y, z) -> state (latest Block Update)
         self.sequence = 0
+        self.slots = {}         # player inventory (window 0): slot -> (count, item id)
+        self.sync_pos = None    # last Synchronize Player Position (x, y, z)
         self.world_age = None   # server uptime in game ticks (20 per second), from Update Time
 
     # --- connection ---
@@ -159,6 +161,22 @@ class Client:
         if pid == 0x27:  # Chunk Data and Update Light
             cx, cz, sections = decode_chunk(body)
             self.chunks[(cx, cz)] = sections
+        elif pid == 0x14:  # Set Container Slot
+            r = Reader(body)
+            window = r.var()
+            r.var()
+            slot = struct.unpack(">h", r.take(2))[0]
+            count = r.var()
+            item = r.var() if count > 0 else 0
+            if window == 0:
+                if count > 0:
+                    self.slots[slot] = (count, item)
+                else:
+                    self.slots.pop(slot, None)
+        elif pid == 0x41:  # Synchronize Player Position
+            r = Reader(body)
+            r.var()
+            self.sync_pos = struct.unpack(">ddd", r.take(24))
         elif pid == 0x6A:  # Update Time: world age is the server's own clock
             self.world_age = struct.unpack(">Q", body[:8])[0]
         elif pid == 0x08:  # Block Update

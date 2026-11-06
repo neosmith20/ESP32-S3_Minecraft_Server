@@ -7,20 +7,71 @@
 // so it has its own name. A world.bin from an older version is ignored.
 #ifdef ESP_PLATFORM
   #include "esp_littlefs.h"
+  #define DATA_DIR "/littlefs/"
   #define FILE_PATH "/littlefs/world2.bin"
   #define OLD_FILE_PATH "/littlefs/world.bin"
   #define JOURNAL_PATH "/littlefs/journal.bin"
 #else
   #include <stdio.h>
+  #define DATA_DIR ""
   #define FILE_PATH "world2.bin"
   #define JOURNAL_PATH "journal.bin"
 #endif
+#define PLAYERS_FILE "players.bin"
 
 #include "tools.h"
 #include "registries.h"
 #include "serialize.h"
 
 int64_t last_disk_sync_time = 0;
+
+// Writes a small file in one piece: the data goes to a temporary file first and
+// replaces the old file with a rename, so a power cut leaves either the old or
+// the new copy, never half of each. Only for small data (a few KB).
+int saveExtraData (const char *name, const void *data, size_t size) {
+  char path[48], tmp[56];
+  snprintf(path, sizeof(path), DATA_DIR "%s", name);
+  snprintf(tmp, sizeof(tmp), DATA_DIR "%s.tmp", name);
+  FILE *file = fopen(tmp, "wb");
+  if (!file) return 1;
+  size_t written = fwrite(data, 1, size, file);
+  if (fclose(file) != 0 || written != size) { remove(tmp); return 1; }
+  if (rename(tmp, path) != 0) {
+    // Some file systems refuse to rename over an existing file
+    remove(path);
+    if (rename(tmp, path) != 0) { remove(tmp); return 1; }
+  }
+  return 0;
+}
+
+// Reads a file written by saveExtraData. Returns 1 if it is missing or its size is wrong.
+int loadExtraData (const char *name, void *data, size_t size) {
+  char path[48];
+  snprintf(path, sizeof(path), DATA_DIR "%s", name);
+  FILE *file = fopen(path, "rb");
+  if (!file) return 1;
+  fseek(file, 0, SEEK_END);
+  long length = ftell(file);
+  fseek(file, 0, SEEK_SET);
+  int bad = length != (long)size || fread(data, 1, size, file) != size;
+  fclose(file);
+  return bad;
+}
+
+// Player data that changed since it was last copied to the small players file
+static uint8_t player_snapshot[sizeof(player_data)];
+static uint8_t player_snapshot_valid = 0;
+
+void writePlayerSnapshot (void) {
+  if (player_snapshot_valid && memcmp(player_snapshot, player_data, sizeof(player_data)) == 0) return;
+  memcpy(player_snapshot, player_data, sizeof(player_data));
+  if (saveExtraData(PLAYERS_FILE, player_snapshot, sizeof(player_snapshot)) == 0) {
+    player_snapshot_valid = 1;
+  } else {
+    player_snapshot_valid = 0;
+    printf("Failed to write the player snapshot file. Player data is saved with the next full save.\n");
+  }
+}
 
 #ifdef DISK_SYNC_BLOCKS_ON_INTERVAL
 static void markPagesDirty (int from, int to);
@@ -68,6 +119,7 @@ int initSerializer () {
       fclose(file);
       remove(FILE_PATH);
       remove(JOURNAL_PATH);
+      remove(DATA_DIR PLAYERS_FILE);
       file = NULL;
     }
   }
@@ -104,6 +156,14 @@ int initSerializer () {
       printf("Read %u bytes from \"world2.bin\", expected %u (player data). Aborting.\n", read, sizeof(player_data));
       return 1;
     }
+    // The small players file is newer than the world file whenever it exists
+    #ifdef DISK_SYNC_BLOCKS_ON_INTERVAL
+    if (loadExtraData(PLAYERS_FILE, player_data, sizeof(player_data)) == 0) {
+      printf("Restored player data from the latest player snapshot.\n");
+      memcpy(player_snapshot, player_data, sizeof(player_data));
+      player_snapshot_valid = 1;
+    }
+    #endif
 
   } else { // World file doesn't exist or failed to open
     printf("No \"world2.bin\" file found, creating one...\n\n");
@@ -243,6 +303,8 @@ static void clearBlockJournal (void) {
 
 void resetBlockJournal (void) {
   clearBlockJournal();
+  remove(DATA_DIR PLAYERS_FILE);
+  player_snapshot_valid = 0;
   memset(dirty_pages, 0, sizeof(dirty_pages));
   dirty_count = 0;
 }
@@ -366,6 +428,9 @@ void writePlayerDataToDisk () {
   }
 
   fclose(file);
+  // The world file now has everything the snapshot file had
+  remove(DATA_DIR PLAYERS_FILE);
+  player_snapshot_valid = 0;
 }
 
 // Writes all player data and all pending block changes right away.
@@ -401,6 +466,12 @@ void writeDataToDiskOnInterval () {
   if (now - last_block_sync_time >= BLOCK_SYNC_INTERVAL) {
     last_block_sync_time = now;
     flushBlockJournal();
+  }
+  // Inventory, position and health go to the small players file every minute
+  static int64_t last_player_snapshot_time = 0;
+  if (now - last_player_snapshot_time >= PLAYER_SNAPSHOT_INTERVAL) {
+    last_player_snapshot_time = now;
+    writePlayerSnapshot();
   }
   #endif
 

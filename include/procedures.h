@@ -57,6 +57,8 @@ void furnaceOpened (PlayerData *player);
 void furnaceClosed (PlayerData *player);
 void furnaceReset (PlayerData *player);
 void tickFurnaces ();
+void saveBedSpawns ();
+void loadBedSpawns ();
 void useBed (PlayerData *player, short x, uint8_t y, short z);
 uint8_t applyBedSpawn (PlayerData *player);
 void tickSleeping ();

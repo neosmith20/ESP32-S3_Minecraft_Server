@@ -14,6 +14,9 @@
   void writePlayerDataToDisk ();
   void writeDataToDiskOnInterval ();
   void writeAllDataToDisk ();
+  void writePlayerSnapshot (void);
+  int saveExtraData (const char *name, const void *data, size_t size);
+  int loadExtraData (const char *name, void *data, size_t size);
 #else
   // Define no-op placeholders for when disk syncing isn't enabled
   #define writeBlockChangesToDisk(a, b)
@@ -25,6 +28,9 @@
   #define writePlayerDataToDisk()
   #define writeDataToDiskOnInterval()
   #define writeAllDataToDisk()
+  #define writePlayerSnapshot()
+  #define saveExtraData(a, b, c) 0
+  #define loadExtraData(a, b, c) 0
   #define initSerializer() 0
 #endif
 
