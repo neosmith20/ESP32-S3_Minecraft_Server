@@ -841,27 +841,51 @@ uint8_t getMiningCount (uint16_t block) {
   return 1;
 }
 
-// Rolls a random number to determine whether the player's tool should break
+// How many uses a tool lasts (the same numbers as the real game), or 0 if the
+// item is not a tool that wears out
+static uint16_t getToolDurability (uint16_t item) {
+  if (item == I_wooden_pickaxe || item == I_wooden_axe || item == I_wooden_shovel || item == I_wooden_hoe) return 59;
+  if (item == I_stone_pickaxe || item == I_stone_axe || item == I_stone_shovel || item == I_stone_hoe) return 131;
+  if (item == I_iron_pickaxe || item == I_iron_axe || item == I_iron_shovel || item == I_iron_hoe) return 250;
+  if (item == I_golden_pickaxe || item == I_golden_axe || item == I_golden_shovel || item == I_golden_hoe) return 32;
+  if (item == I_diamond_pickaxe || item == I_diamond_axe || item == I_diamond_shovel || item == I_diamond_hoe) return 1561;
+  if (item == I_netherite_pickaxe || item == I_netherite_axe || item == I_netherite_shovel || item == I_netherite_hoe) return 2031;
+  if (item == I_shears) return 238;
+  return 0;
+}
+
+// Wear is counted per hotbar slot and kept in memory only (the save file has
+// no room for it): a tool moved to another slot, or a server restart, starts
+// fresh. Earlier versions broke tools by a random roll on every use, which
+// could destroy a brand new pickaxe after two blocks.
+static uint16_t tool_wear[MAX_PLAYERS][9];
+static uint16_t tool_wear_item[MAX_PLAYERS][9];
+
+// Counts one use of the tool in the player's hand and breaks it when worn out
 void bumpToolDurability (PlayerData *player) {
 
-  uint16_t held_item = player->inventory_items[player->hotbar];
+  uint8_t slot = player->hotbar;
+  if (slot >= 9) return;
+  uint16_t held_item = player->inventory_items[slot];
+  uint16_t durability = getToolDurability(held_item);
+  if (durability == 0) return;
 
-  // In order to avoid storing durability data, items break randomly with
-  // the probability weighted based on vanilla durability.
-  uint32_t r = fast_rand();
-  if (
-    ((held_item == I_wooden_pickaxe || held_item == I_wooden_axe || held_item == I_wooden_shovel || held_item == I_wooden_hoe) && r < 72796055) ||
-    ((held_item == I_stone_pickaxe || held_item == I_stone_axe || held_item == I_stone_shovel || held_item == I_stone_hoe) && r < 32786009) ||
-    ((held_item == I_iron_pickaxe || held_item == I_iron_axe || held_item == I_iron_shovel || held_item == I_iron_hoe) && r < 17179869) ||
-    ((held_item == I_golden_pickaxe || held_item == I_golden_axe || held_item == I_golden_shovel || held_item == I_golden_hoe) && r < 134217728) ||
-    ((held_item == I_diamond_pickaxe || held_item == I_diamond_axe || held_item == I_diamond_shovel || held_item == I_diamond_hoe) && r < 2751420) ||
-    ((held_item == I_netherite_pickaxe || held_item == I_netherite_axe || held_item == I_netherite_shovel || held_item == I_netherite_hoe) && r < 2114705) ||
-    (held_item == I_shears && r < 18046081)
-  ) {
-    player->inventory_items[player->hotbar] = 0;
-    player->inventory_count[player->hotbar] = 0;
+  int index = (int)(player - player_data);
+  if (index < 0 || index >= MAX_PLAYERS) return;
+
+  // A different item in this slot than last time: start counting from zero
+  if (tool_wear_item[index][slot] != held_item) {
+    tool_wear_item[index][slot] = held_item;
+    tool_wear[index][slot] = 0;
+  }
+
+  if (++tool_wear[index][slot] >= durability) {
+    tool_wear[index][slot] = 0;
+    tool_wear_item[index][slot] = 0;
+    player->inventory_items[slot] = 0;
+    player->inventory_count[slot] = 0;
     sc_entityEvent(player->client_fd, player->client_fd, 47);
-    sc_setContainerSlot(player->client_fd, 0, serverSlotToClientSlot(0, player->hotbar), 0, 0);
+    sc_setContainerSlot(player->client_fd, 0, serverSlotToClientSlot(0, slot), 0, 0);
   }
 
 }
@@ -1479,7 +1503,8 @@ void handlePlayerAction (PlayerData *player, int action, short x, short y, short
   uint16_t held_item = player->inventory_items[player->hotbar];
   uint16_t item = getMiningResult(held_item, block);
   uint8_t item_count = getMiningCount(block);
-  bumpToolDurability(player);
+  // Blocks that break instantly (grass, flowers, torches) don't wear the tool
+  if (!isInstantlyMined(player, block)) bumpToolDurability(player);
 
   if (item) {
     #ifdef ENABLE_PICKUP_ANIMATION
