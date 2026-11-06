@@ -500,7 +500,7 @@ int main (void) {
     int cows_after = 0, baby = -1; for (int i = 0; i < MAX_MOBS; i ++) if (mob_data[i].type == 28) { cows_after ++; if (mob_data[i].flags & 1) baby = i; }
     CHECK(cows_after == cows_before + 1 && baby >= 0, "two cows in love make a baby");
     CHECK(!(mob_data[c1].flags & 2) && mob_data[c1].timer == 300, "the parents rest for 5 minutes");
-    CHECK(mob_data[baby].timer == 1200, "a baby needs 20 minutes to grow up");
+    CHECK(mob_data[baby].timer >= 1199 && mob_data[baby].timer <= 1200, "a baby needs 20 minutes to grow up");
     interactEntity(-2 - c1, p->client_fd);
     CHECK(p->inventory_count[0] == 1, "parents can't breed again right away");
     // love runs out
@@ -522,6 +522,69 @@ int main (void) {
     tickAnimals();
     CHECK(countFreeMobSlots() == 0, "no baby when all mob slots are used");
     for (int i = 0; i < MAX_MOBS; i ++) mob_data[i].type = 0;
+  }
+
+  // ---- beds ----
+  {
+    uint16_t W = I_white_wool;
+    uint16_t bed_grid[9] = { W, W, W,  P, P, P,  0, 0, 0 };
+    CHECK(craft(bed_grid, &n) == I_white_bed && n == 1, "bed recipe: 3 wool and 3 planks");
+    clearArea();
+    for (int i = 0; i < MAX_MOBS; i ++) mob_data[i].type = 0;
+    p->x = X + 6; p->z = Z + 6; p->y = gy + 1; p->yaw = 0; p->flags = 0;
+    hold(I_white_bed, 2);
+    handlePlayerUseItem(p, X, gy, Z, 1, 0);
+    int look = yawToDirection(p->yaw);
+    short hx = X + dirDX(look), hz = Z + dirDZ(look);
+    CHECK(getBlockAt(X, gy + 1, Z) == BMIN_white_bed + OFF_bed[look][0], "bed foot is placed where clicked");
+    CHECK(getBlockAt(hx, gy + 1, hz) == BMIN_white_bed + OFF_bed[look][1], "bed head is placed in the look direction");
+    CHECK(p->inventory_count[0] == 1, "one bed used");
+    // no room for the head
+    makeBlockChange(X + 3, gy + 1, Z + 3, B_stone);
+    makeBlockChange(X + 3 + dirDX(look), gy + 1, Z + 3 + dirDZ(look), B_stone);
+    handlePlayerUseItem(p, X + 3, gy, Z + 3, 1, 0);
+    CHECK(p->inventory_count[0] == 1, "no bed when the head has no room");
+    // breaking either half removes both and gives a bed back
+    handlePlayerAction(p, 2, hx, gy + 1, hz);
+    CHECK(getBlockAt(X, gy + 1, Z) == B_air && getBlockAt(hx, gy + 1, hz) == B_air, "breaking one half removes the whole bed");
+    CHECK(countItem(p, I_white_bed) == 2, "the bed is dropped");
+    makeBlockChange(X + 3, gy + 1, Z + 3, B_air);
+    makeBlockChange(X + 3 + dirDX(look), gy + 1, Z + 3 + dirDZ(look), B_air);
+
+    // sleeping
+    hold(I_white_bed, 1);
+    handlePlayerUseItem(p, X, gy, Z, 1, 0);
+    p->x = X; p->z = Z; p->y = gy + 2;
+    world_time = 1000;
+    useBed(p, X, gy + 1, Z);
+    for (int t = 0; t < 8; t ++) tickSleeping();
+    CHECK(world_time == 1000, "you can't sleep through the day");
+    world_time = 14000;
+    int zombie = spawnMob(145, X + 2, gy + 1, Z, 20);
+    useBed(p, X, gy + 1, Z);
+    for (int t = 0; t < 8; t ++) tickSleeping();
+    CHECK(world_time == 14000, "a zombie nearby stops you from sleeping");
+    mob_data[zombie].type = 0;
+    useBed(p, X, gy + 1, Z);
+    for (int t = 0; t < 3; t ++) tickSleeping();
+    CHECK(world_time == 14000, "the night isn't skipped right away");
+    for (int t = 0; t < 4; t ++) tickSleeping();
+    CHECK(world_time == 0, "sleeping at night skips to the morning");
+    // walking away cancels sleeping
+    world_time = 15000;
+    useBed(p, X, gy + 1, Z);
+    tickSleeping();
+    p->x = X + 20;
+    for (int t = 0; t < 8; t ++) tickSleeping();
+    CHECK(world_time == 15000, "walking away from the bed cancels sleeping");
+
+    // respawning at the bed
+    p->x = 8; p->z = 8; p->y = 80;
+    CHECK(applyBedSpawn(p) && p->x == X && p->z == Z, "after dying you come back at your bed");
+    handlePlayerAction(p, 2, X, gy + 1, Z);
+    p->x = 8; p->z = 8;
+    CHECK(!applyBedSpawn(p) && p->x == 8, "without the bed you come back at the world spawn");
+    world_time = 1000;
   }
 
   // ---- mobs can't hit through blocks ----

@@ -6,7 +6,7 @@
 
 // The block data files are generated from blocks_config.js and recipes_config.js.
 // If this stops the build, run `node build_registries.js` in the project folder.
-#if !defined(FAM_FARMLAND) || !defined(FAM_CROP)
+#if !defined(FAM_FARMLAND) || !defined(FAM_CROP) || !defined(FAM_BED)
   #error "include/registries.h is out of date. Run: node build_registries.js (in the project folder), then delete the .pio folder and build again."
 #endif
 
@@ -55,6 +55,7 @@ static inline int faceToDirection (int face) {
 // family's offset table and returns it through the pointers.
 // They return 0 if the state isn't in the table.
 int decodeDoor (uint16_t state, int *facing, int *upper, int *open);
+int decodeBed (uint16_t state, int *facing, int *head);
 int decodeTrapdoor (uint16_t state, int *facing, int *top, int *open);
 int decodeGate (uint16_t state, int *facing, int *open);
 int decodeStairs (uint16_t state, int *facing, int *top);

@@ -1442,6 +1442,17 @@ static void removeDoor (short x, short y, short z, uint16_t block) {
   }
 }
 
+// Removes a bed completely, given either of its halves
+static void removeBed (short x, short y, short z, uint16_t block) {
+  int facing, head;
+  if (!decodeBed(block, &facing, &head)) return;
+  short ox = head ? x - dirDX(facing) : x + dirDX(facing);
+  short oz = head ? z - dirDZ(facing) : z + dirDZ(facing);
+  if (getBlockInfo(getBlockAt(ox, y, oz)) == getBlockInfo(block)) {
+    makeBlockChange(ox, y, oz, B_air);
+  }
+}
+
 // Called after a block was removed: removes blocks that depended on it
 // (doors standing on it, torches and ladders hanging on it) and updates
 // fences, panes and walls that were connected to it.
@@ -1501,6 +1512,7 @@ void handlePlayerAction (PlayerData *player, int action, short x, short y, short
   if (action == 0 && GAMEMODE == 1) {
     makeBlockChange(x, y, z, B_air);
     if (getBlockFamily(block) == FAM_DOOR) removeDoor(x, y, z, block);
+    if (getBlockFamily(block) == FAM_BED) removeBed(x, y, z, block);
     updateAfterRemoval(player, x, y, z);
     return;
   }
@@ -1518,6 +1530,8 @@ void handlePlayerAction (PlayerData *player, int action, short x, short y, short
 
   // Doors are two blocks tall, remove the other half too
   if (getBlockFamily(block) == FAM_DOOR) removeDoor(x, y, z, block);
+  // Beds are two blocks long
+  if (getBlockFamily(block) == FAM_BED) removeBed(x, y, z, block);
 
   uint16_t held_item = player->inventory_items[player->hotbar];
   uint16_t item = getMiningResult(held_item, block);
@@ -1566,6 +1580,133 @@ void handlePlayerAction (PlayerData *player, int action, short x, short y, short
 
 }
 
+// ---- Beds ----
+// Using a bed sets the player's respawn point. At night, when every player in
+// the game is in bed for a few seconds, the night is skipped. There is no
+// lying-down animation: a player counts as asleep until they walk away.
+// The respawn points are kept in memory (they are forgotten on a restart).
+typedef struct {
+  uint8_t uuid[16];
+  uint8_t valid;
+  short x; uint8_t y; short z;
+} BedSpawn;
+static BedSpawn bed_spawns[MAX_PLAYERS];
+static int bed_spawn_next = 0;
+
+typedef struct {
+  uint8_t asleep;
+  uint8_t seconds;
+  short x; uint8_t y; short z;
+} SleepState;
+static SleepState sleep_state[MAX_PLAYERS];
+
+#define SLEEP_SECONDS_NEEDED 5
+
+static uint8_t isNightTime () {
+  return world_time >= 12542 && world_time <= 23459;
+}
+
+static void sendChat (PlayerData *player, const char *text) {
+  sc_systemChat(player->client_fd, (char *)text, strlen(text));
+}
+
+static BedSpawn *findBedSpawn (PlayerData *player, uint8_t create) {
+  for (int i = 0; i < MAX_PLAYERS; i ++) {
+    if (bed_spawns[i].valid && memcmp(bed_spawns[i].uuid, player->uuid, 16) == 0) return &bed_spawns[i];
+  }
+  if (!create) return NULL;
+  BedSpawn *slot = &bed_spawns[bed_spawn_next];
+  bed_spawn_next = (bed_spawn_next + 1) % MAX_PLAYERS;
+  memcpy(slot->uuid, player->uuid, 16);
+  return slot;
+}
+
+// Whether a hostile mob is close enough to stop the player from sleeping
+static uint8_t monsterNearby (short x, uint8_t y, short z) {
+  for (int i = 0; i < MAX_MOBS; i ++) {
+    if (mob_data[i].type != 145 || (mob_data[i].data & 31) == 0) continue;
+    if (abs(mob_data[i].x - x) <= 8 && abs(mob_data[i].z - z) <= 8 && abs((int)mob_data[i].y - (int)y) <= 5) return true;
+  }
+  return false;
+}
+
+void useBed (PlayerData *player, short x, uint8_t y, short z) {
+
+  int index = (int)(player - player_data);
+  if (index < 0 || index >= MAX_PLAYERS) return;
+
+  // The bed becomes the player's respawn point
+  BedSpawn *spawn = findBedSpawn(player, true);
+  spawn->valid = true;
+  spawn->x = x; spawn->y = y + 1; spawn->z = z;
+
+  if (!isNightTime()) {
+    sendChat(player, "Respawn point set. You can only sleep at night.");
+    return;
+  }
+  if (monsterNearby(x, y, z)) {
+    sendChat(player, "You may not rest now, there are monsters nearby.");
+    return;
+  }
+  sleep_state[index].asleep = true;
+  sleep_state[index].seconds = 0;
+  sleep_state[index].x = x; sleep_state[index].y = y; sleep_state[index].z = z;
+  sendChat(player, "Respawn point set. Sleeping... stay by the bed until morning.");
+
+}
+
+// Puts a player at their bed after dying, if they have one that still exists.
+// Returns true if the player was moved there.
+uint8_t applyBedSpawn (PlayerData *player) {
+  BedSpawn *spawn = findBedSpawn(player, false);
+  if (spawn == NULL) return false;
+  if (getBlockFamily(getBlockAt(spawn->x, spawn->y - 1, spawn->z)) != FAM_BED) {
+    spawn->valid = false;
+    sendChat(player, "Your bed was missing or blocked.");
+    return false;
+  }
+  player->x = spawn->x; player->y = spawn->y; player->z = spawn->z;
+  player->flags &= ~0x02;
+  return true;
+}
+
+// Checks every second whether the night can be skipped
+void tickSleeping () {
+
+  uint8_t anyone = false, everyone = true;
+  uint8_t night = isNightTime();
+
+  for (int i = 0; i < MAX_PLAYERS; i ++) {
+    PlayerData *player = &player_data[i];
+    if (player->client_fd == -1 || (player->flags & 0x20)) { sleep_state[i].asleep = false; continue; }
+    SleepState *sleeper = &sleep_state[i];
+    if (sleeper->asleep) {
+      // Walking away or daybreak ends the sleep
+      if (!night) {
+        sleeper->asleep = false;
+      } else if (abs(player->x - sleeper->x) > 2 || abs(player->z - sleeper->z) > 2 || abs((int)player->y - (int)sleeper->y) > 3) {
+        sleeper->asleep = false;
+        sendChat(player, "You got out of bed.");
+      } else if (sleeper->seconds < 255) sleeper->seconds ++;
+    }
+    if (sleeper->asleep && sleeper->seconds >= SLEEP_SECONDS_NEEDED) anyone = true;
+    else everyone = false;
+  }
+
+  if (!night || !anyone || !everyone) return;
+
+  // Good morning
+  world_time = 0;
+  for (int i = 0; i < MAX_PLAYERS; i ++) {
+    PlayerData *player = &player_data[i];
+    sleep_state[i].asleep = false;
+    if (player->client_fd == -1 || (player->flags & 0x20)) continue;
+    sc_updateTime(player->client_fd, world_time);
+    sendChat(player, "Good morning! The night has been skipped.");
+  }
+
+}
+
 // Works out which block state results from placing the given block at the
 // given position, based on where the player is looking and what they clicked.
 // Returns BLOCK_NONE if the block can't be placed like this.
@@ -1598,6 +1739,11 @@ static uint16_t getPlacedState (
 
     case FAM_GATE:
       return info->min + OFF_gate[look][0];
+
+    case FAM_BED:
+      // The foot goes where the player clicked, the head is placed in the
+      // direction the player is looking (see handlePlayerUseItem)
+      return info->min + OFF_bed[look][0];
 
     case FAM_STAIRS:
       return info->min + OFF_stairs[look][face == 0 || (face_dir >= 0 && upper_click)];
@@ -1661,6 +1807,9 @@ void handlePlayerUseItem (PlayerData *player, short x, short y, short z, uint8_t
     } else if (IS_BLOCK(target, furnace)) {
       sc_openScreen(player->client_fd, 14, "Furnace", 7);
       furnaceOpened(player);
+      return;
+    } else if (getBlockFamily(target) == FAM_BED) {
+      useBed(player, x, y, z);
       return;
     } else if (toggleOpenable(x, y, z, target)) {
       return;
@@ -1812,6 +1961,13 @@ void handlePlayerUseItem (PlayerData *player, short x, short y, short z, uint8_t
 
   uint16_t state = getPlacedState(player, info, block, px, py, pz, face, cursor_y, target);
   uint8_t is_door = info->family == FAM_DOOR;
+  uint8_t is_bed = info->family == FAM_BED;
+  int bed_facing = 0, bed_head = 0;
+  short head_x = px, head_z = pz;
+  if (is_bed && state != BLOCK_NONE && decodeBed(state, &bed_facing, &bed_head)) {
+    head_x = px + dirDX(bed_facing);
+    head_z = pz + dirDZ(bed_facing);
+  }
 
   if (
     state != BLOCK_NONE &&
@@ -1820,6 +1976,10 @@ void handlePlayerUseItem (PlayerData *player, short x, short y, short z, uint8_t
     (!is_door || (
       isReplaceableBlock(getBlockAt(px, py + 1, pz)) &&
       !isPassableBlock(getBlockAt(px, py - 1, pz))
+    )) &&
+    (!is_bed || (
+      isReplaceableBlock(getBlockAt(head_x, py, head_z)) &&
+      !(head_x == player->x && head_z == player->z && (py == player->y || py == player->y + 1))
     )) &&
     !( // Is player in the way?
       !isPassableBlock(state) &&
@@ -1836,6 +1996,12 @@ void handlePlayerUseItem (PlayerData *player, short x, short y, short z, uint8_t
       int facing, upper, open;
       decodeDoor(state, &facing, &upper, &open);
       if (makeBlockChange(px, py + 1, pz, info->min + OFF_door[facing][1][0])) {
+        makeBlockChange(px, py, pz, B_air);
+        return;
+      }
+    }
+    if (is_bed) {
+      if (makeBlockChange(head_x, py, head_z, info->min + OFF_bed[bed_facing][1])) {
         makeBlockChange(px, py, pz, B_air);
         return;
       }
@@ -2529,8 +2695,8 @@ void handleServerTick (int64_t time_since_last_tick) {
 
   // Grow crops every 5 seconds
   if (server_ticks % (uint32_t)(5 * TICKS_PER_SECOND) == 0) tickFarming(1);
-  // Smelt items in open furnaces, once per second
-  if (server_ticks % (uint32_t)TICKS_PER_SECOND == 0) tickFurnaces();
+  // Smelt items in open furnaces, and check for sleeping players, once per second
+  if (server_ticks % (uint32_t)TICKS_PER_SECOND == 0) { tickFurnaces(); tickSleeping(); }
 
   // Update player events
   for (int i = 0; i < MAX_PLAYERS; i ++) {

@@ -202,3 +202,20 @@ Files: `src/worldgen.c`
   just as cheap as before and the same world always comes out the same.
   Existing saves keep what players built, but the underground changes to the
   new layout in areas that have not been visited yet (and anywhere nothing was built).
+
+### Furnace timer, animals, beds
+Files: `src/crafting.c`, `src/procedures.c`, `src/packets.c`, `include/globals.h`, `blocks_config.js`, `recipes_config.js`, `build_registries.js`
+
+* **Furnace timer.** Smelting takes 10 seconds per item, and fuel burns for its
+  real time (a plank 15 s, coal 80 s, a lava bucket 1000 s). The flame and arrow
+  are shown in the furnace window. A furnace works while its window is open;
+  closing it gives the items back.
+* **Animals.** Cows and sheep follow a player holding wheat, pigs follow carrots
+  or potatoes, chickens follow seeds. Feeding two adults of the same kind makes
+  a baby (they rest 5 minutes afterwards). Babies are small, grow up in
+  20 minutes (food speeds it up) and drop nothing. A few mob slots are kept free
+  so breeding still works when the world is busy.
+* **Beds.** Craft with 3 wool and 3 planks. Using a bed sets your respawn
+  point. At night, when every player is by a bed for 5 seconds, the night is
+  skipped (not with monsters nearby). There is no lying-down animation, and
+  respawn points are forgotten when the server restarts.

@@ -35,6 +35,14 @@ int decodeDoor (uint16_t state, int *facing, int *upper, int *open) {
   return 0;
 }
 
+int decodeBed (uint16_t state, int *facing, int *head) {
+  int off = stateOffsetOf(state);
+  for (int f = 0; f < 4; f ++) for (int h = 0; h < 2; h ++) {
+    if (OFF_bed[f][h] == off) { *facing = f; *head = h; return 1; }
+  }
+  return 0;
+}
+
 int decodeTrapdoor (uint16_t state, int *facing, int *top, int *open) {
   int off = stateOffsetOf(state);
   for (int f = 0; f < 4; f ++) for (int t = 0; t < 2; t ++) for (int o = 0; o < 2; o ++) {

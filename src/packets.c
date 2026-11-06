@@ -1234,6 +1234,8 @@ int cs_clientStatus (int client_fd) {
   if (id == 0) {
     sc_respawn(client_fd);
     resetPlayerData(player);
+    // Players with a bed come back there
+    applyBedSpawn(player);
     spawnPlayer(player);
   }
 

@@ -95,6 +95,7 @@ for (const [item, block] of [
 
 // ----------------------------------------------------------------------- food
 
+shaped("white_bed", 1, ["WWW", "PPP"], { W: "white_wool", P: "oak_planks" });
 shaped("bread", 1, ["WWW"], { W: "wheat" });
 
 // -------------------------------------------------------------------- building

@@ -19,7 +19,7 @@ const biomes = [
 // Family codes shared with the C code (see include/registries.h)
 const familyNames = [
   "NONE", "FLUID", "DOOR", "TRAPDOOR", "GATE", "STAIRS", "SLAB", "LOG", "LADDER",
-  "WALL_TORCH", "TORCH", "FENCE", "PANE", "WALL", "CHEST", "FURNACE", "LANTERN", "CROP", "FARMLAND"
+  "WALL_TORCH", "TORCH", "FENCE", "PANE", "WALL", "CHEST", "FURNACE", "LANTERN", "CROP", "FARMLAND", "BED"
 ];
 
 // Special ingredient groups used by recipes (item IDs are far below these)

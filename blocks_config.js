@@ -22,6 +22,8 @@ const plainBlocks = [
   "farmland", "wheat", "carrots", "potatoes",
   // Utility
   "crafting_table", "furnace", "chest", "composter", "torch", "wall_torch", "lantern", "ladder",
+  // Sleeping
+  "white_bed",
   // Glass
   "glass", "glass_pane", "iron_bars",
   // Wooden things
@@ -123,6 +125,12 @@ const families = {
     dims: [["age", ["0", "1", "2", "3", "4", "5", "6", "7"]]],
     fixed: {}
   },
+  // Beds: facing is the direction from the foot towards the head
+  BED: {
+    sample: "white_bed", table: "bed",
+    dims: [["facing", DIRS], ["part", ["foot", "head"]]],
+    fixed: { occupied: "false" }
+  },
   // Farmland: 7 = wet, 0 = dry
   FARMLAND: {
     sample: "farmland", table: "farmland",
@@ -171,6 +179,7 @@ function familyOf (name) {
   if (name === "lantern") return "LANTERN";
   if (name === "wheat" || name === "carrots" || name === "potatoes") return "CROP";
   if (name === "farmland") return "FARMLAND";
+  if (name.endsWith("_bed")) return "BED";
   return "NONE";
 }
 
@@ -225,7 +234,7 @@ const columnBlocks = new Set([
 ]);
 // Blocks that the client creates special rendering for only when told about
 // them in a block update (light emitters and block entities)
-const separateUpdateBlocks = new Set(["torch", "wall_torch", "chest", "lantern"]);
+const separateUpdateBlocks = new Set(["torch", "wall_torch", "chest", "lantern", "white_bed"]);
 // Drops need a pickaxe (any kind)
 function needsPickaxe (name) {
   if (name.endsWith("_ore")) return true;
