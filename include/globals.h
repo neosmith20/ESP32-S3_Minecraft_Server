@@ -219,6 +219,10 @@
 // coal, logs, iron). Remove the two slashes in front of the line to turn it on.
 // #define GIVE_TEST_KIT
 
+// Shows a chat message with positions and the blocks in between whenever a mob
+// hits a player. Used to track down hits that should have been blocked.
+#define DEBUG_MOB_HITS
+
 #define ENABLE_PICKUP_ANIMATION
 
 // If defined, players are able to receive damage from nearby cacti.

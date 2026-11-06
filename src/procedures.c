@@ -2914,6 +2914,21 @@ void handleServerTick (int64_t time_since_last_tick) {
         closest_dist < 3 && abs(old_y - closest_player->y) < 2 &&
         mobCanReachPlayer(old_x, old_y, old_z, closest_player->x, closest_player->y, closest_player->z)
       ) {
+        #ifdef DEBUG_MOB_HITS
+        {
+          // Tells the player exactly what the server saw when a mob hit them
+          short mid_x = (old_x + closest_player->x) / 2, mid_z = (old_z + closest_player->z) / 2;
+          char text[120];
+          int n = snprintf(
+            text, sizeof(text),
+            "Hit by mob at %d,%d,%d. You: %d,%d,%d. Between: feet %d head %d (family %d/%d)",
+            old_x, old_y, old_z, closest_player->x, closest_player->y, closest_player->z,
+            getBlockAt(mid_x, closest_player->y, mid_z), getBlockAt(mid_x, closest_player->y + 1, mid_z),
+            getBlockFamily(getBlockAt(mid_x, closest_player->y, mid_z)), getBlockFamily(getBlockAt(mid_x, closest_player->y + 1, mid_z))
+          );
+          sc_systemChat(closest_player->client_fd, text, n);
+        }
+        #endif
         hurtEntity(closest_player->client_fd, entity_id, D_generic, 6);
         continue;
       }
