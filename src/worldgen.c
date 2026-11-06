@@ -185,6 +185,13 @@ static inline uint32_t mixHash (uint32_t a) {
   return a;
 }
 
+// Roughly one block in six on the plains grass carries a tuft of short grass
+// (breaking it sometimes drops wheat seeds, like the real game)
+static inline uint8_t hasGrassTuft (int x, int z, int y, uint8_t height) {
+  if (height < 64 || y != height + 1) return false;
+  return mixHash((uint32_t)x * 73856093U ^ (uint32_t)z * 19349663U ^ 0x5bd1e995U) % 6 == 0;
+}
+
 uint16_t getTerrainAtFromCache (int x, int y, int z, int rx, int rz, ChunkAnchor anchor, ChunkFeature feature, uint8_t height) {
 
   if (y >= 64 && y >= height && feature.y != 255) switch (anchor.biome) {
@@ -216,6 +223,7 @@ uint16_t getTerrainAtFromCache (int x, int y, int z, int rx, int rz, ChunkAnchor
       // Since we're sure that we're above sea level and in a plains biome,
       // there's no need to drop down to decide the surrounding blocks.
       if (y == height) return B_grass_block;
+      if (hasGrassTuft(x, z, y, height)) return B_short_grass;
       return B_air;
     }
 
@@ -343,6 +351,9 @@ uint16_t getTerrainAtFromCache (int x, int y, int z, int rx, int rz, ChunkAnchor
   // If all else failed, but we're below sea level, generate water (or ice)
   if (y == 63 && anchor.biome == W_snowy_plains) return B_ice;
   if (y < 64) return B_water;
+
+  // Tufts of short grass on plains (areas without a tree feature)
+  if (anchor.biome == W_plains && hasGrassTuft(x, z, y, height)) return B_short_grass;
 
   // For everything else, fall back to air
   return B_air;

@@ -224,3 +224,6 @@ Files: `src/crafting.c`, `src/procedures.c`, `src/packets.c`, `include/globals.h
 - Dirt that players placed next to grass slowly turns into grass (if open to the sky above).
 - Grass covered by a solid block slowly turns back into dirt.
 - Oak saplings on dirt/grass with 5 free blocks above grow into trees after about 8 minutes on average.
+
+## Short grass on plains
+- Plains now have tufts of short grass (about 1 grass block in 6). Breaking one drops wheat seeds about 1 time in 8.
