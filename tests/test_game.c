@@ -350,7 +350,20 @@ int main (void) {
   makeBlockChange(X, gy, Z + 2, B_water + 3);
   handleBucketUse(p, 0.0f, 45.0f);
   CHECK(getBlockAt(X, gy, Z + 2) == B_water + 3 && p->inventory_items[0] == I_bucket, "flowing water can't be picked up");
+  // a lake refills the spot (two or more neighbouring sources)
+  makeBlockChange(X, gy - 1, Z + 2, B_stone);
+  makeBlockChange(X, gy, Z + 2, B_water);
+  makeBlockChange(X + 1, gy, Z + 2, B_water);
+  makeBlockChange(X - 1, gy, Z + 2, B_water);
+  hold(I_bucket, 1);
+  handleBucketUse(p, 0.0f, 45.0f);
+  CHECK(p->inventory_items[0] == I_water_bucket, "bucket filled from a lake");
+  CHECK(getBlockAt(X, gy, Z + 2) == B_water, "a lake refills the taken spot with a new source");
+  makeBlockChange(X + 1, gy, Z + 2, B_air);
+  makeBlockChange(X - 1, gy, Z + 2, B_air);
+  makeBlockChange(X, gy, Z + 2, B_air);
   // lava
+  hold(I_bucket, 1);
   makeBlockChange(X, gy, Z + 2, B_lava);
   handleBucketUse(p, 0.0f, 45.0f);
   CHECK(p->inventory_items[0] == I_lava_bucket && getBlockAt(X, gy, Z + 2) == B_air, "lava source fills a lava bucket");

@@ -2134,6 +2134,16 @@ uint8_t handleBucketUse (PlayerData *player, float yaw, float pitch) {
           if (givePlayerItem(player, filled, 1)) { /* inventory full: the empty bucket is kept */ }
         }
         sc_setContainerSlot(player->client_fd, 0, serverSlotToClientSlot(0, player->hotbar), *count, *item);
+        // Like the real game, water with two or more water sources next to it
+        // (and something to rest on) makes a new source right away, so taking
+        // water from a lake or the sea leaves no hole
+        if (block == B_water) {
+          int sources = (getBlockAt(cx + 1, cy, cz) == B_water) + (getBlockAt(cx - 1, cy, cz) == B_water) +
+                        (getBlockAt(cx, cy, cz + 1) == B_water) + (getBlockAt(cx, cy, cz - 1) == B_water);
+          uint16_t below = getBlockAt(cx, cy - 1, cz);
+          uint8_t supported = below == B_water || (!isReplaceableBlock(below) && !isPassableBlock(below) && !IS_WATER(below) && !IS_LAVA(below));
+          if (sources >= 2 && supported && !makeBlockChange(cx, cy, cz, B_water)) return true;
+        }
         // Let neighboring fluid react to the missing source
         checkFluidUpdate(cx, cy + 1, cz, getBlockAt(cx, cy + 1, cz));
         checkFluidUpdate(cx - 1, cy, cz, getBlockAt(cx - 1, cy, cz));
