@@ -461,6 +461,27 @@ int main (void) {
     CHECK(st.burn_left > 0, "the fire keeps burning without material");
   }
 
+  // ---- bucket on a natural lake ----
+  {
+    int lx = 0, lz = 0, found = 0;
+    for (int x = 200; x < 1200 && !found; x ++) for (int z = 200; z < 1200 && !found; z += 3) {
+      if (getBlockAt(x, 63, z) == B_water && getBlockAt(x + 1, 63, z) == B_water && getBlockAt(x - 1, 63, z) == B_water &&
+          getBlockAt(x, 63, z + 1) == B_water && getBlockAt(x, 63, z - 1) == B_water && getBlockAt(x, 64, z) == B_air) { lx = x; lz = z; found = 1; }
+    }
+    CHECK(found, "natural lake found");
+    if (found) {
+      printf("info: lake at %d,%d below=%d\n", lx, lz, getBlockAt(lx, 62, lz));
+      player_exact[0][0] = lx + 0.5; player_exact[0][1] = 64; player_exact[0][2] = lz - 1.5;
+      p->x = lx; p->y = 64; p->z = lz - 2;
+      hold(I_bucket, 1);
+      handleBucketUse(p, 0.0f, 45.0f);
+      CHECK(p->inventory_items[0] == I_water_bucket, "bucket filled from a natural lake");
+      int hit = 0;
+      for (int dz = -2; dz <= 2; dz ++) if (getBlockAt(lx, 63, lz + dz) != B_water) hit ++;
+      CHECK(hit == 0, "natural lake has no hole after taking water");
+    }
+  }
+
   // ---- natural short grass does not float ----
   {
     int fx = 0, fy = 0, fz = 0, found = 0;
