@@ -238,3 +238,6 @@ The real firmware image (16 MB flash, 8 MB PSRAM, LittleFS save partition) now b
 
 ## Falling sand
 Sand (and gravel/red sand where present) no longer breaks when its support is removed; the whole stack lands on the next solid block immediately.
+
+## Security and stability review
+See the "Security review of packet handling" and "Performance review" sections in AUDIT.md. New tests: tests/test_security.c (with address/undefined-behavior checking) and tests/run_abuse.py (hostile connections against the native server), both run in GitHub Actions.

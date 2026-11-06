@@ -237,11 +237,20 @@ class Client:
         return None
 
     # --- actions ---
-    def move(self, x, y, z):
-        self.send(0x1D, struct.pack(">ddd", x, y, z) + bytes([1]))
+    def move(self, x, y, z, on_ground=1):
+        self.pos = (x, y, z)
+        self.send(0x1D, struct.pack(">ddd", x, y, z) + bytes([on_ground]))
+
+    def _approach(self, x, y, z):
+        """The server only accepts block actions within reach (about 8 blocks),
+        like a real client would be. Step next to the block first."""
+        pos = getattr(self, "pos", None)
+        if pos is None or abs(pos[0] - x) > 5 or abs(pos[2] - z) > 5 or abs(pos[1] - y) > 5:
+            self.move(x + 0.5, y + 1.0, z + 0.5, on_ground=0)
 
     def dig(self, x, y, z):
         """Start and finish digging a block (the server does not time digging)."""
+        self._approach(x, y, z)
         self.sequence += 1
         self.send(0x28, bytes([0]) + pack_pos(x, y, z) + bytes([1]) + varint(self.sequence))
         self.sequence += 1
@@ -249,6 +258,7 @@ class Client:
 
     def place(self, x, y, z, face=1):
         """Right-click the given block face with the held item."""
+        self._approach(x, y, z)
         self.sequence += 1
         self.send(0x3F, bytes([0]) + pack_pos(x, y, z) + bytes([face]) + struct.pack(">fff", 0.5, 1.0, 0.5) + bytes([0, 0]) + varint(self.sequence))
 

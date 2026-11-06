@@ -45,3 +45,16 @@ server); inventory contents are still client-trusted apart from slot/count limit
 fit this design); no speed/fly detection; sends to a client that stops reading can still stall for up to 15 s.
 Pre-existing quirks noted but not changed: the chest storage pointer trick reads 16-bit values at odd addresses (works on the
 board per earlier testing); one world-generation shift uses a negative count on some inputs (changing it would alter existing worlds).
+
+## Performance review (done)
+Measured on a PC (so only relative numbers matter; the ESP32-S3 is roughly 20-50 times slower per operation):
+- Block lookups on an edited world: about 0.1 microseconds each; 20,000 block changes stored in 3 ms; the indexed lookup is not a bottleneck.
+- Crop/grass/tree growth pass (every 5 s): about 170 microseconds on a PC, bounded by a fixed budget of 48 entries per pass.
+- Furnace, animal and sleep checks: too small to measure. Full world save of 35 pages and a journal flush of 2,000 changes: under 1 ms on a PC disk
+  (this says nothing about real flash speed, which must be checked on the board).
+Changes made for performance and stability:
+- The server no longer calls accept() on every pass of the main loop (only on every 8th pass): fewer system calls while idle.
+- Packets are only read once they have fully arrived. Before, one client that sent half a packet could freeze every player for 15 s at a time.
+- Teleport-sized movement can no longer make the server generate hundreds of chunks at once (capped at 3 chunk rows per movement packet).
+Not changed on purpose: save timing (journal every 15 s, player snapshot every 60 s, no full player write while playing) because it is the
+protection against the old flash-saving lag. Anything about real save latency, WiFi, and player capacity is hardware-only.

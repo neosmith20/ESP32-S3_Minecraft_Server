@@ -652,8 +652,12 @@ int main () {
     task_yield();
     SEC_MARK(1);
 
-    // Attempt to accept a new connection
-    for (int i = 0; i < MAX_PLAYERS; i ++) {
+    // Attempt to accept a new connection. This is a system call, so it is
+    // only tried on every 8th pass of this loop (a few milliseconds apart at
+    // worst), instead of on every pass.
+    static uint8_t accept_pass = 0;
+    accept_pass ++;
+    for (int i = 0; i < MAX_PLAYERS && (accept_pass & 7) == 0; i ++) {
       if (clients[i] != -1) continue;
       clients[i] = accept(server_fd, (struct sockaddr *)&client_addr, &addr_len);
       // If the accept was successful, make the client non-blocking too
